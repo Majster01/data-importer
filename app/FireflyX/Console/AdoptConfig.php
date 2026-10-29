@@ -27,8 +27,8 @@ final class AdoptConfig extends Command
 {
     protected $description = 'Adopt an exported Enable Banking import config as a bank connection.';
     protected $signature   = 'fireflyx:connections:adopt
-        {file : The exported importer config (JSON)}
-        {--name= : Connection name (default: the file name without .json)}
+        {file : The exported importer config (JSON), or - to read it from stdin}
+        {--name= : Connection name (default: the file name without .json; required with -)}
         {--accept-base : Adopt even if its shared settings differ from the base config}
         {--offline : Do not ask Enable Banking for status and account details}';
 
@@ -37,7 +37,10 @@ final class AdoptConfig extends Command
         $file = (string) $this->argument('file');
 
         try {
-            $config = json_decode((string) @file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+            // stdin lets the host pass a config the container cannot read
+            // (mode 600, another uid) without mounting it or running as root.
+            $raw    = '-' === $file ? (string) stream_get_contents(STDIN) : (string) @file_get_contents($file);
+            $config = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
             $base   = BaseConfig::load((string) config('fireflyx.base_config'));
         } catch (ConfigException|JsonException $e) {
             $this->error($e->getMessage());
@@ -45,6 +48,11 @@ final class AdoptConfig extends Command
             return self::FAILURE;
         }
 
+        if ('-' === $file && !$this->option('name')) {
+            $this->error('--name is required when reading from stdin.');
+
+            return self::FAILURE;
+        }
         $name = (string) ($this->option('name') ?: basename($file, '.json'));
         if (1 !== preg_match('/^[a-z0-9-]{1,64}$/', $name)) {
             $this->error(sprintf('"%s" is not a valid connection name (a-z, 0-9, -).', $name));

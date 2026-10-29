@@ -15,6 +15,12 @@ RUN grep "'version'" /tmp/fork-importer.php > /tmp/fork-version \
  && cmp /tmp/fork-version /tmp/image-version \
  || { echo "Fork branch and base image are different importer versions:"; cat /tmp/fork-version /tmp/image-version; exit 1; }
 
+# fireflyx:render runs as www-data and writes the autoimport configs here. A
+# named volume mounted on /import starts out with this ownership.
+USER root
+RUN mkdir -p /import && chown www-data:www-data /import && chmod 700 /import
+USER www-data
+
 COPY --chown=www-data:www-data app/FireflyX                 /var/www/html/app/FireflyX
 COPY --chown=www-data:www-data routes/fireflyx.php          /var/www/html/routes/fireflyx.php
 COPY --chown=www-data:www-data database/migrations/fireflyx /var/www/html/database/migrations/fireflyx

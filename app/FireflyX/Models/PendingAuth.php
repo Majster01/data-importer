@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 final class PendingAuth extends Model
 {
     public const string KIND_REAUTH = 'reauth';
+    public const string KIND_CREATE = 'create';
 
     // "fx-" lets Caddy send these callbacks here instead of to upstream's,
     // whose state is always a UUID.

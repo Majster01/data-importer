@@ -30,7 +30,8 @@ final class ConnectionController extends Controller
     public function index(): JsonResponse
     {
         $staleBefore = Carbon::now()->subMinutes((int) config('fireflyx.refresh_after'));
-        $connections = Connection::with('accounts')->orderBy('name')->get()->map(function (Connection $connection) use ($staleBefore): array {
+        // A consent still being given is not a connection yet.
+        $connections = Connection::with('accounts')->where('lifecycle', '!=', Connection::LIFECYCLE_PENDING)->orderBy('name')->get()->map(function (Connection $connection) use ($staleBefore): array {
             if (!$connection->checked_at instanceof Carbon || $connection->checked_at->lessThan($staleBefore)) {
                 $connection = $this->refresher->refresh($connection);
             }
@@ -95,6 +96,7 @@ final class ConnectionController extends Controller
             'days_left'   => $connection->daysLeft(),
             'checked_at'  => $connection->checked_at?->toW3cString(),
             'accounts'    => $connection->accounts->map(static fn (ConnectionAccount $account): array => [
+                'id'                  => $account->id,
                 'identification_hash' => $account->identification_hash,
                 'iban_masked'         => $account->maskedIban(),
                 'name'                => $account->name,

@@ -26,6 +26,10 @@ final class FakeGateway implements EnableBankingGateway
     public int $maxConsent         = 15_552_000; // 180 days
     public ?array $nextSession     = null;
     public bool $failCreateSession = false;
+    public bool $failStartAuth     = false;
+
+    /** @var array<string, list<array>> country => banks */
+    public array $banks = [];
 
     public function getSession(string $sessionId): SessionDetails
     {
@@ -44,6 +48,13 @@ final class FakeGateway implements EnableBankingGateway
         return BankAccount::fromEnableBanking(['uid' => $accountUid, ...($this->accountDetails[$accountUid] ?? [])]);
     }
 
+    public function listBanks(string $country): array
+    {
+        $this->calls[] = ['listBanks', $country];
+
+        return $this->banks[$country] ?? [];
+    }
+
     public function maxConsentSeconds(string $country, string $bank): int
     {
         $this->calls[] = ['maxConsentSeconds', $country, $bank];
@@ -54,6 +65,9 @@ final class FakeGateway implements EnableBankingGateway
     public function startAuthorisation(string $country, string $bank, string $psuType, string $state, string $redirectUrl, Carbon $validUntil): array
     {
         $this->calls[] = ['startAuthorisation', compact('country', 'bank', 'psuType', 'state', 'redirectUrl', 'validUntil')];
+        if ($this->failStartAuth) {
+            throw new RuntimeException('Enable Banking API error: 422');
+        }
 
         return ['url' => 'https://tilisy.example/auth?state='.$state, 'auth_id' => 'new-auth-id'];
     }

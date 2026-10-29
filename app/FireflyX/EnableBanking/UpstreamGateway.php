@@ -42,6 +42,29 @@ final class UpstreamGateway implements EnableBankingGateway
         return BankAccount::fromEnableBanking(['uid' => $accountUid, ...$request->fetch()]);
     }
 
+    public function listBanks(string $country): array
+    {
+        $request = new GetASPSPsRequest($this->url(), $country);
+        $request->setTimeOut($this->timeout());
+
+        /** @var ASPSPsResponse $response */
+        $response = $request->get();
+        $banks    = [];
+
+        /** @var Bank $aspsp */
+        foreach ($response->getBanks() as $aspsp) {
+            $banks[] = [
+                'name'             => $aspsp->name,
+                'country'          => '' !== $aspsp->country ? $aspsp->country : $country,
+                'logo'             => '' !== $aspsp->logo ? $aspsp->logo : null,
+                'max_consent_days' => intdiv($aspsp->maximumConsentValidity, 86_400),
+                'psu_types'        => array_values($aspsp->psuTypes),
+            ];
+        }
+
+        return $banks;
+    }
+
     public function maxConsentSeconds(string $country, string $bank): int
     {
         try {

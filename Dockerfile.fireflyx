@@ -25,3 +25,9 @@ COPY --chown=www-data:www-data app/FireflyX                 /var/www/html/app/Fi
 COPY --chown=www-data:www-data routes/fireflyx.php          /var/www/html/routes/fireflyx.php
 COPY --chown=www-data:www-data database/migrations/fireflyx /var/www/html/database/migrations/fireflyx
 COPY --chown=www-data:www-data config/fireflyx.php config/app.php /var/www/html/config/
+
+# A syntax error in any of these would stop the whole importer from booting
+# (the entrypoint loads every provider), so refuse to build instead.
+RUN find /var/www/html/app/FireflyX /var/www/html/database/migrations/fireflyx \
+         /var/www/html/routes/fireflyx.php /var/www/html/config/fireflyx.php /var/www/html/config/app.php \
+         -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null

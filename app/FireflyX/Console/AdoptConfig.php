@@ -30,6 +30,7 @@ final class AdoptConfig extends Command
         {file : The exported importer config (JSON), or - to read it from stdin}
         {--name= : Connection name (default: the file name without .json; required with -)}
         {--accept-base : Adopt even if its shared settings differ from the base config}
+        {--replace : Replace the session and accounts of an existing connection (after re-linking in the importer UI)}
         {--offline : Do not ask Enable Banking for status and account details}';
 
     public function handle(SessionRefresher $refresher): int
@@ -59,8 +60,9 @@ final class AdoptConfig extends Command
 
             return self::FAILURE;
         }
-        if (Connection::withTrashed()->where('name', $name)->exists()) {
-            $this->error(sprintf('A connection named "%s" already exists.', $name));
+        $existing = Connection::withTrashed()->where('name', $name)->first();
+        if (null !== $existing && !$this->option('replace')) {
+            $this->error(sprintf('A connection named "%s" already exists (use --replace after re-linking it).', $name));
 
             return self::FAILURE;
         }
@@ -83,16 +85,27 @@ final class AdoptConfig extends Command
             return self::FAILURE;
         }
 
-        $connection = DB::transaction(static function () use ($config, $name): Connection {
-            $connection = new Connection([
-                'name'         => $name,
+        // Session and account uids change together or not at all: the uids
+        // belong to the session (they die with it).
+        $connection = DB::transaction(static function () use ($config, $name, $existing): Connection {
+            $connection = $existing ?? new Connection(['name' => $name]);
+            $connection->fill([
                 'lifecycle'    => Connection::LIFECYCLE_READY,
                 'bank_name'    => (string) $config['enable_banking_bank'],
                 'bank_country' => (string) $config['enable_banking_country'],
                 'session_id'   => (string) $config['enable_banking_sessions'][0],
                 'auth_id'      => (string) ($config['enable_banking_auth_id'] ?? ''),
+                'eb_status'    => null,
+                'valid_until'  => null,
+                'checked_at'   => null,
+                'last_error'   => null,
             ]);
-            if ('' !== (string) ($config['created_at'] ?? '')) {
+            if (null !== $existing) {
+                $connection->relinked_at = Carbon::now();
+                $connection->deleted_at  = null;
+                $connection->accounts()->delete();
+            }
+            if (null === $existing && '' !== (string) ($config['created_at'] ?? '')) {
                 $connection->created_at = Carbon::parse($config['created_at']);
             }
             $connection->save();
@@ -107,7 +120,8 @@ final class AdoptConfig extends Command
             $connection = $refresher->refresh($connection->load('accounts'));
         }
         $this->line(sprintf(
-            'Adopted %s: %s %s, %d account(s), status %s.',
+            '%s %s: %s %s, %d account(s), status %s.',
+            null === $existing ? 'Adopted' : 'Replaced',
             $connection->name,
             $connection->bank_name,
             $connection->bank_country,

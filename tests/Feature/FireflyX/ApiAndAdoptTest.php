@@ -86,6 +86,29 @@ final class ApiAndAdoptTest extends FireflyXTestCase
         $this->assertSame('error', $connection->status());
     }
 
+    public function testReplaceSwapsSessionAndAccountsTogether(): void
+    {
+        $this->adoptFixture();
+        $relinked                            = $this->fixture('exported-nlb.json');
+        $relinked['enable_banking_sessions'] = ['new-session'];
+        $relinked['accounts']                = ['new-uid' => 1];
+        $file                                = $this->importDir.'/relinked.json';
+        file_put_contents($file, json_encode($relinked));
+
+        $this->artisan('fireflyx:connections:adopt', ['file' => $file, '--name' => 'nlb', '--offline' => true])
+            ->expectsOutputToContain('already exists (use --replace')
+            ->assertFailed();
+        $this->artisan('fireflyx:connections:adopt', ['file' => $file, '--name' => 'nlb', '--offline' => true, '--replace' => true])
+            ->expectsOutputToContain('Replaced nlb')
+            ->assertSuccessful();
+
+        $connection = Connection::with('accounts')->where('name', 'nlb')->first();
+        $this->assertSame('new-session', $connection->session_id);
+        $this->assertSame(['new-uid'], $connection->accounts->pluck('uid')->all());
+        $this->assertNotNull($connection->relinked_at);
+        $this->assertSame('2026-08-31', $connection->created_at->format('Y-m-d'), 'created_at is kept');
+    }
+
     private function adoptFixture(): void
     {
         $this->artisan('fireflyx:connections:adopt', ['file' => __DIR__.'/../../fixtures/fireflyx/exported-nlb.json', '--name' => 'nlb', '--offline' => true])

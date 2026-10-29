@@ -32,6 +32,9 @@ use Throwable;
  */
 final class LinkController extends Controller
 {
+    // Pico's bank connections page.
+    private const string DEFAULT_RETURN_PATH = '/bank-connections/list';
+
     public function __construct(
         private readonly EnableBankingGateway $gateway,
         private readonly AccountRemapper $remapper,
@@ -42,7 +45,7 @@ final class LinkController extends Controller
      */
     public function reauth(Request $request, string $name): JsonResponse
     {
-        $returnPath = (string) $request->input('return_path', '/bank-connections');
+        $returnPath = (string) $request->input('return_path', self::DEFAULT_RETURN_PATH);
         if (!self::isAllowedReturnPath($returnPath)) {
             return response()->json(['error' => 'return_path must be a path under /bank-connections'], 422);
         }
@@ -98,7 +101,8 @@ final class LinkController extends Controller
     {
         $pending = PendingAuth::consume((string) $request->query('state', ''));
         if (null === $pending) {
-            return $this->backToPico('/bank-connections', null, 'error', 'invalid_state');
+            // Without a valid state there is no return path to trust: use Pico's page.
+            return $this->backToPico(self::DEFAULT_RETURN_PATH, null, 'error', 'invalid_state');
         }
         $connection = $pending->connection;
         if (null === $connection) {

@@ -61,6 +61,32 @@ final class ApiAndAdoptTest extends FireflyXTestCase
         $this->assertSame($exported, $rendered);
     }
 
+    public function testAdoptIgnoresKeyOrderInSharedSettings(): void
+    {
+        // The committed base went through `jq -S`; an export lists keys in the
+        // importer's own order. Same values, so adopt must accept it.
+        $config                      = $this->fixture('exported-nlb.json');
+        $config['pseudo_identifier'] = ['source_columns' => [0], 'separator' => '|', 'role' => 'external-id'];
+        $file                        = $this->importDir.'/reordered.json';
+        file_put_contents($file, json_encode($config));
+
+        $this->artisan('fireflyx:connections:adopt', ['file' => $file, '--name' => 'nlb', '--offline' => true])
+            ->expectsOutputToContain('Adopted nlb')
+            ->assertSuccessful();
+    }
+
+    public function testAdoptStillSeesAChangedValueInsideAReorderedObject(): void
+    {
+        $config                      = $this->fixture('exported-nlb.json');
+        $config['pseudo_identifier'] = ['source_columns' => [0], 'separator' => ',', 'role' => 'external-id'];
+        $file                        = $this->importDir.'/changed.json';
+        file_put_contents($file, json_encode($config));
+
+        $this->artisan('fireflyx:connections:adopt', ['file' => $file, '--name' => 'nlb', '--offline' => true])
+            ->expectsOutput('These settings differ from the base config: pseudo_identifier')
+            ->assertFailed();
+    }
+
     public function testAdoptRefusesSettingsThatDifferFromTheBase(): void
     {
         $config          = $this->fixture('exported-nlb.json');

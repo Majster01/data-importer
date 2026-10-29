@@ -82,7 +82,7 @@ final class RelinkTest extends FireflyXTestCase
 
         // The state is single use: a replayed callback does nothing.
         $this->get('/fireflyx/eb-callback?state='.$state.'&code=the-code')
-            ->assertRedirect('https://pico.example.test/bank-connections?result=error&reason=invalid_state');
+            ->assertRedirect('https://pico.example.test/bank-connections/list?result=error&reason=invalid_state');
         $this->assertCount(1, $this->bank->called('createSession'));
     }
 
@@ -123,10 +123,10 @@ final class RelinkTest extends FireflyXTestCase
         $expired = $this->startReauth();
         PendingAuth::whereKey($expired)->update(['expires_at' => Carbon::now()->subMinute()]);
         $this->get('/fireflyx/eb-callback?state='.$expired.'&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections?result=error&reason=invalid_state');
+            ->assertRedirect('https://pico.example.test/bank-connections/list?result=error&reason=invalid_state');
 
         $this->get('/fireflyx/eb-callback?state=5f0c2a9e-1111-4222-8333-944455556666&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections?result=error&reason=invalid_state');
+            ->assertRedirect('https://pico.example.test/bank-connections/list?result=error&reason=invalid_state');
 
         $this->assertSame([], $this->bank->called('createSession'));
         $this->assertSame('session-old', Connection::where('name', 'nlb')->first()->session_id);

@@ -74,7 +74,7 @@ final class AdoptConfig extends Command
 
         $differences = [];
         foreach ($base->values() as $key => $value) {
-            if (($config[$key] ?? null) !== $value) {
+            if (self::normalise($config[$key] ?? null) !== self::normalise($value)) {
                 $differences[] = $key;
             }
         }
@@ -133,5 +133,22 @@ final class AdoptConfig extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * JSON objects compare equal whatever their key order (a base config that
+     * went through `jq -S` has its keys sorted); lists keep their order.
+     */
+    private static function normalise(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $value = array_map(self::normalise(...), $value);
+        if (!array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
     }
 }

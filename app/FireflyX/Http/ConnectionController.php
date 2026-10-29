@@ -88,14 +88,14 @@ final class ConnectionController extends Controller
     public static function present(Connection $connection): array
     {
         return [
-            'name'        => $connection->name,
-            'status'      => $connection->status(),
-            'bank'        => ['name' => $connection->bank_name, 'country' => $connection->bank_country, 'logo' => $connection->bank_logo],
-            'psu_type'    => $connection->psu_type,
-            'expires_at'  => $connection->valid_until?->toW3cString(),
-            'days_left'   => $connection->daysLeft(),
-            'checked_at'  => $connection->checked_at?->toW3cString(),
-            'accounts'    => $connection->accounts->map(static fn (ConnectionAccount $account): array => [
+            'name'          => $connection->name,
+            'status'        => $connection->status(),
+            'bank'          => ['name' => $connection->bank_name, 'country' => $connection->bank_country, 'logo' => $connection->bank_logo],
+            'psu_type'      => $connection->psu_type,
+            'expires_at'    => $connection->valid_until?->toW3cString(),
+            'days_left'     => $connection->daysLeft(),
+            'checked_at'    => $connection->checked_at?->toW3cString(),
+            'accounts'      => $connection->accounts->map(static fn (ConnectionAccount $account): array => [
                 'id'                  => $account->id,
                 'identification_hash' => $account->identification_hash,
                 'iban_masked'         => $account->maskedIban(),
@@ -103,12 +103,13 @@ final class ConnectionController extends Controller
                 'currency'            => $account->currency,
                 'firefly_account_id'  => $account->firefly_account_id,
             ])->all(),
-            'last_import' => null === $connection->last_import_at ? null : [
+            'last_import'   => null === $connection->last_import_at ? null : [
                 'at'      => $connection->last_import_at->toW3cString(),
                 'ok'      => $connection->last_import_ok,
                 'summary' => $connection->last_import_summary,
             ],
-            'last_error'  => $connection->last_error,
+            'last_error'    => $connection->last_error,
+            'manual_import' => $connection->manualImports()->latest('id')->first()?->present(),
         ];
     }
 }

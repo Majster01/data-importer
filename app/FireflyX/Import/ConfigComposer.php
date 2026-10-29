@@ -27,6 +27,32 @@ final class ConfigComposer
 
     public function compose(Connection $connection, Carbon $today): array
     {
+        return $this->build($connection, [
+            'date_not_before'   => $this->notBefore($connection, $today)->format('Y-m-d'),
+            'date_not_after'    => '',
+            'date_range'        => 'partial',
+            'date_range_number' => $this->lookbackDays,
+            'date_range_unit'   => 'd',
+        ]);
+    }
+
+    /**
+     * The same config for an explicit time frame (both days included), as
+     * chosen for a manual import. Everything but the window is identical.
+     */
+    public function composeRange(Connection $connection, Carbon $from, Carbon $to): array
+    {
+        return $this->build($connection, [
+            'date_not_before'   => $from->format('Y-m-d'),
+            'date_not_after'    => $to->format('Y-m-d'),
+            'date_range'        => 'range',
+            'date_range_number' => $this->lookbackDays,
+            'date_range_unit'   => 'd',
+        ]);
+    }
+
+    private function build(Connection $connection, array $window): array
+    {
         $accounts = [];
 
         /** @var ConnectionAccount $account */
@@ -48,11 +74,7 @@ final class ConfigComposer
             'enable_banking_bank'     => $connection->bank_name,
             'enable_banking_country'  => $connection->bank_country,
             'enable_banking_sessions' => [$connection->session_id],
-            'date_not_before'         => $this->notBefore($connection, $today)->format('Y-m-d'),
-            'date_not_after'          => '',
-            'date_range'              => 'partial',
-            'date_range_number'       => $this->lookbackDays,
-            'date_range_unit'         => 'd',
+            ...$window,
         ];
 
         try {

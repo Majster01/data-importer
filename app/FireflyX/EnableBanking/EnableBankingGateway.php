@@ -21,6 +21,13 @@ interface EnableBankingGateway
 
     public function getAccountDetails(string $accountUid): BankAccount;
 
+    /**
+     * The banks Enable Banking offers in a country.
+     *
+     * @return list<array{name: string, country: string, logo: ?string, max_consent_days: int, psu_types: list<string>}>
+     */
+    public function listBanks(string $country): array;
+
     /** Seconds; the bank's own limit, or 89 days when it cannot be read. */
     public function maxConsentSeconds(string $country, string $bank): int;
 

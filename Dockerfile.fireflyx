@@ -1,0 +1,21 @@
+# FireflyX fork of the Firefly III Data Importer. AGPL-3.0, see LICENSE.
+#
+# The official image plus the fork's files. No PHP or JS build: the official
+# entrypoint runs `composer dump-autoload` and `config:cache` on every start
+# and never caches routes, so copied classes, routes and config are picked up.
+#
+# IMPORTER_VERSION must be the upstream tag this branch is based on; the guard
+# below fails the build otherwise, because config/app.php is copied wholesale.
+ARG IMPORTER_VERSION=2.3.5
+FROM fireflyiii/data-importer:version-${IMPORTER_VERSION}
+
+COPY config/importer.php /tmp/fork-importer.php
+RUN grep "'version'" /tmp/fork-importer.php > /tmp/fork-version \
+ && grep "'version'" /var/www/html/config/importer.php > /tmp/image-version \
+ && cmp /tmp/fork-version /tmp/image-version \
+ || { echo "Fork branch and base image are different importer versions:"; cat /tmp/fork-version /tmp/image-version; exit 1; }
+
+COPY --chown=www-data:www-data app/FireflyX                 /var/www/html/app/FireflyX
+COPY --chown=www-data:www-data routes/fireflyx.php          /var/www/html/routes/fireflyx.php
+COPY --chown=www-data:www-data database/migrations/fireflyx /var/www/html/database/migrations/fireflyx
+COPY --chown=www-data:www-data config/fireflyx.php config/app.php /var/www/html/config/

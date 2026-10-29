@@ -245,6 +245,8 @@ return [
         // Application Service Providers...
         AppServiceProvider::class,
         App\Providers\AuthServiceProvider::class,
+        // FireflyX fork: bank connections API, nightly render and import report.
+        App\FireflyX\FireflyXServiceProvider::class,
         // App\Providers\BroadcastServiceProvider::class,
         EventServiceProvider::class,
         RouteServiceProvider::class,

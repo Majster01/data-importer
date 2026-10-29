@@ -9,16 +9,23 @@ declare(strict_types=1);
 
 namespace App\FireflyX\Http;
 
+use App\FireflyX\EnableBanking\EnableBankingGateway;
 use App\FireflyX\EnableBanking\SessionRefresher;
 use App\FireflyX\Models\Connection;
 use App\FireflyX\Models\ConnectionAccount;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 final class ConnectionController extends Controller
 {
-    public function __construct(private readonly SessionRefresher $refresher) {}
+    public function __construct(
+        private readonly SessionRefresher $refresher,
+        private readonly EnableBankingGateway $gateway,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -42,6 +49,30 @@ final class ConnectionController extends Controller
     public function refresh(string $name): JsonResponse
     {
         return response()->json(['data' => self::present($this->refresher->refresh($this->find($name)))]);
+    }
+
+    /**
+     * Stops importing at once and closes the consent at the bank. The row is
+     * soft-deleted, so the name and its import history are kept.
+     */
+    public function destroy(string $name): Response
+    {
+        $connection = $this->find($name);
+        if (null !== $connection->session_id && '' !== $connection->session_id) {
+            try {
+                $this->gateway->deleteSession($connection->session_id);
+            } catch (Throwable $e) {
+                // Best effort: an expired consent is already closed.
+                Log::warning(sprintf('FireflyX: could not close the session of %s: %s', $name, $e->getMessage()));
+            }
+        }
+        $connection->delete();
+        $rendered = sprintf('%s/%s', rtrim((string) config('fireflyx.import_dir'), '/'), $connection->configFileName());
+        if (is_file($rendered)) {
+            unlink($rendered);
+        }
+
+        return response()->noContent();
     }
 
     private function find(string $name): Connection

@@ -14,6 +14,9 @@ use App\FireflyX\Console\AdoptConfig;
 use App\FireflyX\Console\RefreshConnections;
 use App\FireflyX\Console\RenderImports;
 use App\FireflyX\Console\ReportImports;
+use App\FireflyX\EnableBanking\EnableBankingGateway;
+use App\FireflyX\EnableBanking\UpstreamGateway;
+use App\FireflyX\Http\LinkController;
 use App\FireflyX\Listeners\RecordImportResult;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -25,11 +28,21 @@ use Illuminate\Support\ServiceProvider;
  */
 final class FireflyXServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        $this->app->bind(EnableBankingGateway::class, UpstreamGateway::class);
+    }
+
     public function boot(): void
     {
         Route::middleware('api')
             ->prefix('api/fireflyx/v1')
             ->group(base_path('routes/fireflyx.php'));
+
+        // The bank sends the user back to upstream's registered /eb-callback;
+        // Caddy rewrites the ones whose state starts with "fx-" to here. No
+        // middleware group: no session, no CSRF, the state is the credential.
+        Route::get('fireflyx/eb-callback', [LinkController::class, 'callback'])->middleware('throttle:30,1');
 
         $this->loadMigrationsFrom(database_path('migrations/fireflyx'));
 

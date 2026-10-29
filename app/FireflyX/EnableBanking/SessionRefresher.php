@@ -11,8 +11,6 @@ namespace App\FireflyX\EnableBanking;
 
 use App\FireflyX\Models\Connection;
 use App\FireflyX\Models\ConnectionAccount;
-use App\Services\EnableBanking\Request\GetAccountDetailsRequest;
-use App\Services\EnableBanking\Response\AccountDetailsResponse;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -24,18 +22,16 @@ use Throwable;
  */
 final class SessionRefresher
 {
+    public function __construct(private readonly EnableBankingGateway $gateway) {}
+
     public function refresh(Connection $connection): Connection
     {
         if (null === $connection->session_id || '' === $connection->session_id) {
             return $connection;
         }
-        $url     = (string) config('eb.url');
-        $request = new GetSessionRequest($url, $connection->session_id);
-        $request->setTimeOut((float) config('importer.connection.timeout'));
 
         try {
-            /** @var SessionDetails $details */
-            $details = $request->get();
+            $details = $this->gateway->getSession($connection->session_id);
         } catch (Throwable $e) {
             // Not only ImporterHttpException: a bad key fails in the JWT
             // library, and upstream's authenticatedGet() itself errors on a
@@ -57,12 +53,12 @@ final class SessionRefresher
         /** @var ConnectionAccount $account */
         foreach ($connection->accounts as $account) {
             $hash = $details->identificationHashes[$account->uid] ?? '';
-            if ('' !== $hash && $account->identification_hash !== $hash) {
+            if ('' !== $hash) {
                 $account->identification_hash = $hash;
             }
             // Details only work while the consent is valid, and never change.
             if (null === $account->iban && 'AUTHORIZED' === $details->status) {
-                $this->fillDetails($url, $account);
+                $this->fillDetails($account);
             }
             $account->save();
         }
@@ -70,25 +66,20 @@ final class SessionRefresher
         return $connection;
     }
 
-    private function fillDetails(string $url, ConnectionAccount $account): void
+    private function fillDetails(ConnectionAccount $account): void
     {
-        $request = new GetAccountDetailsRequest($url, $account->uid);
-        $request->setTimeOut((float) config('importer.connection.timeout'));
-
         try {
-            /** @var AccountDetailsResponse $response */
-            $response = $request->get();
+            $details = $this->gateway->getAccountDetails($account->uid);
         } catch (Throwable $e) {
             Log::warning(sprintf('FireflyX: no details for account %s: %s', $account->uid, $e->getMessage()));
 
             return;
         }
-        $details                       = $response->account;
-        $account->iban                 = '' !== $details->getIban() ? $details->getIban() : null;
-        $account->name                 = $details->getFullName();
-        $account->currency             = '' !== $details->getCurrency() ? $details->getCurrency() : null;
-        if ('' !== $details->getIdentificationHash()) {
-            $account->identification_hash = $details->getIdentificationHash();
+        $account->iban     = '' !== $details->iban ? $details->iban : null;
+        $account->name     = $details->name;
+        $account->currency = '' !== $details->currency ? $details->currency : null;
+        if ('' !== $details->identificationHash) {
+            $account->identification_hash = $details->identificationHash;
         }
     }
 }

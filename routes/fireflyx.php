@@ -12,6 +12,7 @@
 declare(strict_types=1);
 
 use App\FireflyX\Http\ConnectionController;
+use App\FireflyX\Http\LinkController;
 use App\FireflyX\Http\RequireToken;
 use Illuminate\Support\Facades\Route;
 
@@ -19,4 +20,6 @@ Route::middleware(RequireToken::class)->group(static function (): void {
     Route::get('connections', [ConnectionController::class, 'index']);
     Route::get('connections/{name}', [ConnectionController::class, 'show'])->where('name', '[a-z0-9-]+');
     Route::post('connections/{name}/refresh', [ConnectionController::class, 'refresh'])->where('name', '[a-z0-9-]+');
+    Route::post('connections/{name}/reauth', [LinkController::class, 'reauth'])->where('name', '[a-z0-9-]+');
+    Route::delete('connections/{name}', [ConnectionController::class, 'destroy'])->where('name', '[a-z0-9-]+');
 });

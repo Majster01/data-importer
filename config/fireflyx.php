@@ -30,4 +30,15 @@ return [
     // GET /connections refreshes a connection from Enable Banking when its last
     // check is older than this.
     'refresh_after'  => (int) env('FIREFLYX_REFRESH_AFTER_MINUTES', 60),
+
+    // The redirect URL registered with Enable Banking: upstream's own callback
+    // on the public importer host, e.g. https://import.example.com/eb-callback.
+    'callback_url'   => env('FIREFLYX_CALLBACK_URL', ''),
+
+    // Where the user lands after the bank: Pico's public URL. Only a path from
+    // the request is appended, so this is the one possible redirect target.
+    'pico_url'       => env('FIREFLYX_PICO_URL', ''),
+
+    // How long a started consent may take before its state stops working.
+    'auth_ttl'       => (int) env('FIREFLYX_AUTH_TTL_MINUTES', 15),
 ];

@@ -247,6 +247,15 @@ final class LinkController extends Controller
             return $this->abandon($pending, $connection, 'session_failed');
         }
 
+        if ([] === $session['accounts']) {
+            // Consent was given but no account was ticked at the bank (OTP banka does this):
+            // there is nothing to import, so the consent is closed and the user tries again.
+            Log::warning(sprintf('FireflyX: the bank shared no accounts for %s', $connection->name));
+            $this->deleteQuietly($session['session_id']);
+
+            return $this->abandon($pending, $connection, 'no_accounts');
+        }
+
         if (PendingAuth::KIND_CREATE === $pending->kind) {
             return $this->completeCreate($pending, $connection, $session);
         }
@@ -261,9 +270,11 @@ final class LinkController extends Controller
             return $this->backToPico($pending->return_path, $connection->name, 'needs_mapping', 'unmatched_accounts');
         }
 
-        $oldSession = $connection->session_id;
+        $oldSession   = $connection->session_id;
+        // A connection that was never mapped (the bank shared no accounts the first time) still has to be.
+        $needsMapping = $connection->mappedAccounts()->isEmpty();
         // Session and account uids change together or not at all.
-        DB::transaction(static function () use ($connection, $session, $remap, $pending): void {
+        DB::transaction(static function () use ($connection, $session, $remap, $pending, $needsMapping): void {
             $connection->fill([
                 'session_id'  => $session['session_id'],
                 'auth_id'     => (string) ($pending->payload['auth_id'] ?? ''),
@@ -272,7 +283,7 @@ final class LinkController extends Controller
                 'checked_at'  => Carbon::now(),
                 'last_error'  => null,
                 'relinked_at' => Carbon::now(),
-                'lifecycle'   => Connection::LIFECYCLE_READY,
+                'lifecycle'   => $needsMapping ? Connection::LIFECYCLE_NEEDS_MAPPING : Connection::LIFECYCLE_READY,
             ])->save();
             $connection->accounts()->delete();
             foreach ($remap['accounts'] as $account) {
@@ -283,7 +294,9 @@ final class LinkController extends Controller
             $this->deleteQuietly($oldSession);
         }
 
-        return $this->backToPico($pending->return_path, $connection->name, 'ok', null);
+        return $needsMapping
+            ? $this->backToPico(self::SETUP_PATH, $connection->name, 'ok', null)
+            : $this->backToPico($pending->return_path, $connection->name, 'ok', null);
     }
 
     /**

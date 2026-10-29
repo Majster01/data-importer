@@ -138,6 +138,46 @@ final class NewConnectionTest extends FireflyXTestCase
         $this->assertSame(0, Connection::withTrashed()->count());
     }
 
+    public function testAConsentThatSharesNoAccountsIsClosedAndLeavesNothingBehind(): void
+    {
+        $this->create();
+        $this->bank->nextSession = ['session_id' => 'session-empty', 'accounts' => []];
+
+        $this->get('/fireflyx/eb-callback?state='.$this->state().'&code=c')
+            ->assertRedirect('https://pico.example.test/bank-connections/list?connection=nlb&result=error&reason=no_accounts');
+
+        $this->assertSame([['deleteSession', 'session-empty']], $this->bank->called('deleteSession'), 'the useless consent is closed');
+        $this->assertSame(0, Connection::withTrashed()->count());
+    }
+
+    public function testReauthenticatingAnUnmappedConnectionGoesToTheSetupPage(): void
+    {
+        // The state OTP banka left behind: consent, no accounts, waiting for a mapping.
+        Connection::create([
+            'name' => 'otp-banka', 'lifecycle' => Connection::LIFECYCLE_NEEDS_MAPPING, 'bank_name' => 'OTP banka', 'bank_country' => 'SI',
+            'session_id' => 'session-old', 'auth_id' => 'auth-old', 'eb_status' => 'AUTHORIZED', 'valid_until' => Carbon::now()->addDays(60), 'checked_at' => Carbon::now(),
+        ]);
+        $this->postJson('/api/fireflyx/v1/connections/otp-banka/reauth', ['return_path' => '/bank-connections/list'], $this->auth())->assertOk();
+
+        // Still nothing shared: the old connection stays as it is.
+        $this->bank->nextSession = ['session_id' => 'session-empty', 'accounts' => []];
+        $this->get('/fireflyx/eb-callback?state='.$this->state().'&code=c')
+            ->assertRedirect('https://pico.example.test/bank-connections/list?connection=otp-banka&result=error&reason=no_accounts');
+        $this->assertSame('session-old', Connection::where('name', 'otp-banka')->first()->session_id);
+
+        // The account is ticked this time.
+        $this->postJson('/api/fireflyx/v1/connections/otp-banka/reauth', ['return_path' => '/bank-connections/list'], $this->auth())->assertOk();
+        $this->bank->nextSession = ['session_id' => 'session-new', 'accounts' => [
+            ['uid' => 'uid-1', 'identification_hash' => 'hash-1', 'account_id' => ['iban' => 'SI56191000000123438'], 'currency' => 'EUR'],
+        ]];
+        $this->get('/fireflyx/eb-callback?state='.$this->state().'&code=c')
+            ->assertRedirect('https://pico.example.test/bank-connections/setup?connection=otp-banka&result=ok');
+
+        $connection = Connection::with('accounts')->where('name', 'otp-banka')->first();
+        $this->assertSame(['needs_mapping', 'session-new'], [$connection->status(), $connection->session_id]);
+        $this->assertSame(['uid-1'], $connection->accounts->pluck('uid')->all());
+    }
+
     public function testSavingTheMappingMakesTheConnectionImportable(): void
     {
         [$first, $second] = $this->consented();

@@ -74,6 +74,11 @@ final class Connection extends Model
         return $this->hasMany(ConnectionAccount::class);
     }
 
+    public function manualImports(): HasMany
+    {
+        return $this->hasMany(ManualImport::class);
+    }
+
     /**
      * What Pico shows: pending, needs_mapping, expired, error, expiring or active.
      */

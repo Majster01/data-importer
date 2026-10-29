@@ -13,10 +13,13 @@ use App\Events\ImportedTransactions;
 use App\FireflyX\Console\AdoptConfig;
 use App\FireflyX\Console\RefreshConnections;
 use App\FireflyX\Console\RenderImports;
+use App\FireflyX\Console\RunManualImport;
 use App\FireflyX\Console\ReportImports;
 use App\FireflyX\EnableBanking\EnableBankingGateway;
 use App\FireflyX\EnableBanking\UpstreamGateway;
 use App\FireflyX\Http\LinkController;
+use App\FireflyX\Import\ArtisanConfigImporter;
+use App\FireflyX\Import\ConfigImporter;
 use App\FireflyX\Listeners\RecordImportResult;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +34,7 @@ final class FireflyXServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(EnableBankingGateway::class, UpstreamGateway::class);
+        $this->app->bind(ConfigImporter::class, ArtisanConfigImporter::class);
     }
 
     public function boot(): void
@@ -54,6 +58,7 @@ final class FireflyXServiceProvider extends ServiceProvider
                 AdoptConfig::class,
                 RefreshConnections::class,
                 RenderImports::class,
+                RunManualImport::class,
                 ReportImports::class,
             ]);
         }

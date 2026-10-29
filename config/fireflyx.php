@@ -41,4 +41,13 @@ return [
 
     // How long a started consent may take before its state stops working.
     'auth_ttl'       => (int) env('FIREFLYX_AUTH_TTL_MINUTES', 15),
+
+    // The category suggester's trigger, run after a manual import over the same
+    // time frame (see services/category-suggester in FireflyX). Reached on the
+    // internal network only. Without a URL a manual import still runs and says
+    // that its suggestions were not made.
+    'suggester_url'     => env('FIREFLYX_SUGGESTER_URL', ''),
+    'suggester_token'   => env('FIREFLYX_SUGGESTER_TOKEN', ''),
+    // Seconds to wait for it: it makes one model call per group of transactions.
+    'suggester_timeout' => (int) env('FIREFLYX_SUGGESTER_TIMEOUT', 1800),
 ];

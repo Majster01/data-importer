@@ -147,6 +147,7 @@ final class NewConnectionTest extends FireflyXTestCase
             ->assertRedirect('https://pico.example.test/bank-connections/list?connection=nlb&result=error&reason=no_accounts');
 
         $this->assertSame([['deleteSession', 'session-empty']], $this->bank->called('deleteSession'), 'the useless consent is closed');
+        $this->assertSame([['diagnoseSession', 'session-empty']], $this->bank->called('diagnoseSession'), 'and looked at once more first');
         $this->assertSame(0, Connection::withTrashed()->count());
     }
 

@@ -91,6 +91,11 @@ final class FakeGateway implements EnableBankingGateway
         $this->calls[] = ['deleteSession', $sessionId];
     }
 
+    public function diagnoseSession(string $sessionId): void
+    {
+        $this->calls[] = ['diagnoseSession', $sessionId];
+    }
+
     public function called(string $method): array
     {
         return array_values(array_filter($this->calls, static fn (array $call): bool => $call[0] === $method));

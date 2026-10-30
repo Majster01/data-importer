@@ -26,6 +26,30 @@ class SuggesterClient
     }
 
     /**
+     * The suggester's run history and what became of its suggestions, as it
+     * answers GET /stats (see services/category-suggester/suggester/serve.py).
+     *
+     * @throws RuntimeException
+     */
+    public function stats(int $days): array
+    {
+        try {
+            $response = Http::withToken((string) config('fireflyx.suggester_token'))
+                ->acceptJson()
+                ->timeout((int) config('fireflyx.suggester_stats_timeout'))
+                ->get(rtrim((string) config('fireflyx.suggester_url'), '/').'/stats', ['days' => $days])
+            ;
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('The category suggester is not reachable.', 0, $e);
+        }
+        if (!$response->successful()) {
+            throw new RuntimeException((string) ($response->json('error') ?? sprintf('The category suggester answered %d.', $response->status())));
+        }
+
+        return (array) $response->json();
+    }
+
+    /**
      * @return array{written: int}
      *
      * @throws RuntimeException

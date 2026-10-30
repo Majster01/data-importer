@@ -12,6 +12,7 @@ namespace App\FireflyX\Http;
 use App\FireflyX\EnableBanking\EnableBankingGateway;
 use App\FireflyX\EnableBanking\SessionRefresher;
 use App\FireflyX\Models\Connection;
+use App\FireflyX\Models\ConnectionEvent;
 use App\FireflyX\Models\ConnectionAccount;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -68,6 +69,7 @@ final class ConnectionController extends Controller
             }
         }
         $connection->delete();
+        ConnectionEvent::record($connection, 'removed');
         $rendered = sprintf('%s/%s', rtrim((string) config('fireflyx.import_dir'), '/'), $connection->configFileName());
         if (is_file($rendered)) {
             unlink($rendered);

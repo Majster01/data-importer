@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\FireflyX\Http;
 
 use App\FireflyX\Models\Connection;
+use App\FireflyX\Models\ConnectionEvent;
 use App\FireflyX\Models\ImportRun;
 use App\FireflyX\Models\ManualImport;
 use App\FireflyX\Suggester\SuggesterClient;
@@ -31,6 +32,7 @@ final class StatusController extends Controller
     private const int DEFAULT_DAYS = 30;
     private const int MAX_DAYS     = 365;
     private const int RECENT       = 10;
+    private const int EVENTS       = 30;
 
     public function __construct(private readonly SuggesterClient $suggester) {}
 
@@ -51,6 +53,7 @@ final class StatusController extends Controller
             'imports'      => $this->imports($since, $days),
             'manual'       => $this->manual($since),
             'connections'  => $this->connections(),
+            'events'       => $this->events($since),
             'suggester'    => $this->suggesterStats($days),
         ]]);
     }
@@ -131,6 +134,24 @@ final class StatusController extends Controller
             'last_import_ok' => $connection->last_import_ok,
             'last_error'     => $connection->last_error,
         ])->all();
+    }
+
+    /**
+     * What happened to the bank connections in the window: consents started,
+     * declined or completed, refreshes that failed, consents that ended. Newest
+     * first; `totals` count every event of the window, `recent` only the latest.
+     */
+    private function events(Carbon $since): array
+    {
+        $window = ConnectionEvent::where('created_at', '>=', $since);
+
+        return [
+            'totals' => [
+                ConnectionEvent::ERROR   => (clone $window)->where('level', ConnectionEvent::ERROR)->count(),
+                ConnectionEvent::WARNING => (clone $window)->where('level', ConnectionEvent::WARNING)->count(),
+            ],
+            'recent' => (clone $window)->orderByDesc('id')->limit(self::EVENTS)->get()->map(static fn (ConnectionEvent $event): array => $event->present())->all(),
+        ];
     }
 
     private function suggesterStats(int $days): array

@@ -14,6 +14,7 @@ use App\FireflyX\EnableBanking\EnableBankingGateway;
 use App\FireflyX\EnableBanking\FlowTrace;
 use App\FireflyX\Import\AccountRemapper;
 use App\FireflyX\Models\Connection;
+use App\FireflyX\Models\ConnectionEvent;
 use App\FireflyX\Models\PendingAuth;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -133,6 +134,8 @@ final class LinkController extends Controller
     {
         $callback = (string) config('fireflyx.callback_url');
         if ('' === $callback) {
+            ConnectionEvent::record($connection, 'consent_start_failed', ConnectionEvent::ERROR, 'no_callback_url', 'FIREFLYX_CALLBACK_URL is not configured.', $kind);
+
             return response()->json(['error' => 'FIREFLYX_CALLBACK_URL is not configured'], 500);
         }
         $connection->max_consent_days = intdiv($maxSeconds, 86_400);
@@ -152,6 +155,7 @@ final class LinkController extends Controller
             );
         } catch (Throwable $e) {
             Log::error(sprintf('FireflyX: could not start the authorisation of %s: %s', $connection->name, $e->getMessage()));
+            ConnectionEvent::record($connection, 'consent_start_failed', ConnectionEvent::ERROR, 'eb_refused', $e->getMessage(), $kind);
 
             return response()->json(['error' => 'Enable Banking refused to start the authorisation.', 'detail' => $e->getMessage()], 502);
         }
@@ -164,6 +168,7 @@ final class LinkController extends Controller
             'return_path'   => $returnPath,
             'expires_at'    => Carbon::now()->addMinutes((int) config('fireflyx.auth_ttl')),
         ]);
+        ConnectionEvent::record($connection, 'consent_started', ConnectionEvent::INFO, null, null, $kind);
 
         return response()->json(['data' => ['auth_url' => $auth['url']]]);
     }
@@ -213,6 +218,7 @@ final class LinkController extends Controller
             }
             $connection->update(['lifecycle' => Connection::LIFECYCLE_READY, 'import_since' => $since]);
         });
+        ConnectionEvent::record($connection, 'accounts_saved', ConnectionEvent::INFO, null, sprintf('%d of %d bank account(s) will be imported.', count(array_filter($targets, static fn (?int $target): bool => null !== $target)), $connection->accounts->count()));
 
         return response()->json(['data' => ConnectionController::present($connection->refresh()->load('accounts'))]);
     }
@@ -234,12 +240,15 @@ final class LinkController extends Controller
         $pending = PendingAuth::consume((string) $request->query('state', ''));
         if (null === $pending) {
             FlowTrace::event('callback state not accepted (unknown, used or expired)');
+            ConnectionEvent::record(null, 'callback_rejected', ConnectionEvent::ERROR, 'invalid_state', 'The consent link was unknown, already used or expired.');
 
             // Without a valid state there is no return path to trust: use Pico's page.
             return $this->backToPico(self::DEFAULT_RETURN_PATH, null, 'error', 'invalid_state');
         }
         $connection = $pending->connection;
         if (null === $connection) {
+            ConnectionEvent::record(null, 'callback_rejected', ConnectionEvent::ERROR, 'connection_gone', 'The connection was removed while the consent was open.', $pending->kind);
+
             return $this->backToPico($pending->return_path, null, 'error', 'connection_gone');
         }
         FlowTrace::event('callback matched a started consent', [
@@ -260,6 +269,7 @@ final class LinkController extends Controller
                 (string) $request->query('error', ''),
                 (string) $request->query('error_description', '')
             ));
+            ConnectionEvent::record($connection, 'consent_declined', ConnectionEvent::WARNING, 'bank_declined', sprintf('error=%s, description=%s', (string) $request->query('error', ''), (string) $request->query('error_description', '')), $pending->kind);
 
             return $this->abandon($pending, $connection, 'bank_declined');
         }
@@ -268,6 +278,7 @@ final class LinkController extends Controller
             $session = $this->gateway->createSession($code);
         } catch (Throwable $e) {
             Log::error(sprintf('FireflyX: could not create a session for %s: %s', $connection->name, $e->getMessage()));
+            ConnectionEvent::record($connection, 'session_failed', ConnectionEvent::ERROR, 'session_failed', $e->getMessage(), $pending->kind);
 
             return $this->abandon($pending, $connection, 'session_failed');
         }
@@ -276,6 +287,7 @@ final class LinkController extends Controller
             // Consent was given but no account was ticked at the bank (OTP banka does this):
             // there is nothing to import, so the consent is closed and the user tries again.
             Log::warning(sprintf('FireflyX: the bank shared no accounts for %s', $connection->name));
+            ConnectionEvent::record($connection, 'no_accounts', ConnectionEvent::WARNING, 'no_accounts', 'The bank gave consent but shared no accounts; the consent was closed.', $pending->kind);
             // Look at the session once more before it is closed: does GET /sessions
             // list accounts the POST did not, and what do their details say?
             $this->gateway->diagnoseSession($session['session_id']);
@@ -293,6 +305,7 @@ final class LinkController extends Controller
             // Keep the working connection as it is; the old session may still be
             // valid. Close the new consent rather than leave it dangling.
             Log::warning(sprintf('FireflyX: re-link of %s could not find: %s', $connection->name, implode(', ', $remap['unmatched'])));
+            ConnectionEvent::record($connection, 'relink_unmatched', ConnectionEvent::WARNING, 'unmatched_accounts', sprintf('%d bank account(s) could not be matched to the existing ones; the old consent was kept.', count($remap['unmatched'])), $pending->kind);
             $this->deleteQuietly($session['session_id']);
 
             return $this->backToPico($pending->return_path, $connection->name, 'needs_mapping', 'unmatched_accounts');
@@ -321,6 +334,7 @@ final class LinkController extends Controller
         if (null !== $oldSession && $oldSession !== $session['session_id']) {
             $this->deleteQuietly($oldSession);
         }
+        ConnectionEvent::record($connection, 'consent_completed', ConnectionEvent::INFO, null, sprintf('%d bank account(s) shared.', count($session['accounts'])), $pending->kind);
 
         return $needsMapping
             ? $this->backToPico(self::SETUP_PATH, $connection->name, 'ok', null)
@@ -351,6 +365,7 @@ final class LinkController extends Controller
                 ]);
             }
         });
+        ConnectionEvent::record($connection, 'consent_completed', ConnectionEvent::INFO, null, sprintf('%d bank account(s) shared.', count($session['accounts'])), $pending->kind);
 
         return $this->backToPico(self::SETUP_PATH, $connection->name, 'ok', null);
     }

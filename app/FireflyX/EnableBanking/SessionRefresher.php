@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\FireflyX\EnableBanking;
 
 use App\FireflyX\Models\Connection;
+use App\FireflyX\Models\ConnectionEvent;
 use App\FireflyX\Models\ConnectionAccount;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -30,6 +31,11 @@ final class SessionRefresher
             return $connection;
         }
 
+        // Events are for changes only: this runs on every list load and every
+        // night, and an unreachable bank would otherwise log the same line each time.
+        $hadError     = null !== $connection->last_error;
+        $statusBefore = $connection->status();
+
         try {
             $details = $this->gateway->getSession($connection->session_id);
         } catch (Throwable $e) {
@@ -40,6 +46,9 @@ final class SessionRefresher
             $connection->last_error = $e->getMessage();
             $connection->checked_at = Carbon::now();
             $connection->save();
+            if (!$hadError) {
+                ConnectionEvent::record($connection, 'refresh_failed', ConnectionEvent::ERROR, 'refresh_failed', $e->getMessage());
+            }
 
             return $connection;
         }
@@ -49,6 +58,12 @@ final class SessionRefresher
         $connection->checked_at  = Carbon::now();
         $connection->last_error  = null;
         $connection->save();
+        if ($hadError) {
+            ConnectionEvent::record($connection, 'refresh_recovered', ConnectionEvent::INFO);
+        }
+        if ('expired' !== $statusBefore && 'expired' === $connection->status()) {
+            ConnectionEvent::record($connection, 'consent_ended', ConnectionEvent::WARNING, 'expired', sprintf('Enable Banking reports the consent as %s.', $details->status));
+        }
 
         /** @var ConnectionAccount $account */
         foreach ($connection->accounts as $account) {

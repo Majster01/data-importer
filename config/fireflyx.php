@@ -54,6 +54,9 @@ return [
     // How many days of per-night import history (fireflyx_import_runs) are kept.
     'history_days'  => (int) env('FIREFLYX_HISTORY_DAYS', 180),
 
+    // How many days of bank connection events (fireflyx_connection_events) are kept.
+    'events_days'   => (int) env('FIREFLYX_EVENTS_DAYS', 90),
+
     // Seconds to wait for the suggester's run history when the status page asks.
     'suggester_stats_timeout' => (int) env('FIREFLYX_SUGGESTER_STATS_TIMEOUT', 10),
 

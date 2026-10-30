@@ -51,6 +51,12 @@ return [
     // Seconds to wait for it: it makes one model call per group of transactions.
     'suggester_timeout' => (int) env('FIREFLYX_SUGGESTER_TIMEOUT', 1800),
 
+    // How many days of per-night import history (fireflyx_import_runs) are kept.
+    'history_days'  => (int) env('FIREFLYX_HISTORY_DAYS', 180),
+
+    // Seconds to wait for the suggester's run history when the status page asks.
+    'suggester_stats_timeout' => (int) env('FIREFLYX_SUGGESTER_STATS_TIMEOUT', 10),
+
     // Debug trace of the consent flow (see EnableBanking/FlowTrace.php): what
     // is sent to Enable Banking and what the bank sent back, one "EB-TRACE"
     // log line per step. IBANs and names are masked unless _RAW is also set.

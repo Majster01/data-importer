@@ -50,4 +50,10 @@ return [
     'suggester_token'   => env('FIREFLYX_SUGGESTER_TOKEN', ''),
     // Seconds to wait for it: it makes one model call per group of transactions.
     'suggester_timeout' => (int) env('FIREFLYX_SUGGESTER_TIMEOUT', 1800),
+
+    // Debug trace of the consent flow (see EnableBanking/FlowTrace.php): what
+    // is sent to Enable Banking and what the bank sent back, one "EB-TRACE"
+    // log line per step. IBANs and names are masked unless _RAW is also set.
+    'eb_trace'     => (bool) env('FIREFLYX_EB_TRACE', false),
+    'eb_trace_raw' => (bool) env('FIREFLYX_EB_TRACE_RAW', false),
 ];

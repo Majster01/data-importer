@@ -38,4 +38,10 @@ interface EnableBankingGateway
     public function createSession(string $code): array;
 
     public function deleteSession(string $sessionId): void;
+
+    /**
+     * Debug aid (FlowTrace): asks Enable Banking again what a session and its
+     * accounts look like and writes it to the trace. Never throws.
+     */
+    public function diagnoseSession(string $sessionId): void;
 }

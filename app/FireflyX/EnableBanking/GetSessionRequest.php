@@ -29,6 +29,12 @@ final class GetSessionRequest extends Request
         return new SessionDetails($this->authenticatedGet());
     }
 
+    /** The response as Enable Banking sent it (for the consent trace). */
+    public function fetch(): array
+    {
+        return $this->authenticatedGet();
+    }
+
     public function post(): Response
     {
         throw new ImporterHttpException('GetSessionRequest does not support POST');

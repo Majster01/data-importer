@@ -12,7 +12,6 @@ namespace App\FireflyX\EnableBanking;
 use App\Services\EnableBanking\Model\Bank;
 use App\Services\EnableBanking\Request\GetASPSPsRequest;
 use App\Services\EnableBanking\Request\PostAuthRequest;
-use App\Services\EnableBanking\Request\PostSessionRequest;
 use App\Services\EnableBanking\Response\ASPSPsResponse;
 use App\Services\EnableBanking\Response\AuthResponse;
 use App\Services\EnableBanking\Response\SessionResponse;
@@ -98,19 +97,37 @@ final class UpstreamGateway implements EnableBankingGateway
         $request->setRedirectUrl($redirectUrl);
         $request->setValidUntil($validUntil->getTimestamp());
 
+        // PostAuthRequest builds the body itself: access = {valid_until} only,
+        // aspsp = {name, country}, state, redirect_url, psu_type.
+        FlowTrace::event('POST /auth request', [
+            'aspsp'        => $bank,
+            'country'      => $country,
+            'psu_type'     => $psuType,
+            'redirect_url' => $redirectUrl,
+            'valid_until'  => $validUntil->toIso8601String(),
+            'state'        => substr($state, 0, 6).'…',
+        ]);
+
         /** @var AuthResponse $response */
         $response = $request->post();
+
+        FlowTrace::event('POST /auth response', [
+            'authorization_id' => $response->authId,
+            'url'              => FlowTrace::describeUrl($response->url),
+        ]);
 
         return ['url' => $response->url, 'auth_id' => $response->authId];
     }
 
     public function createSession(string $code): array
     {
-        $request = new PostSessionRequest($this->url(), $code);
+        $request = new PostSessionRawRequest($this->url(), $code);
         $request->setTimeOut($this->timeout());
 
-        /** @var SessionResponse $response */
-        $response = $request->post();
+        $json = $request->fetch();
+        FlowTrace::event('POST /sessions response', FlowTrace::describeSession($json));
+
+        $response = SessionResponse::fromArray($json);
 
         return [
             'session_id'  => $response->sessionId,
@@ -124,6 +141,47 @@ final class UpstreamGateway implements EnableBankingGateway
         $request = new DeleteSessionRequest($this->url(), $sessionId);
         $request->setTimeOut($this->timeout());
         $request->delete();
+    }
+
+    public function diagnoseSession(string $sessionId): void
+    {
+        if (!FlowTrace::enabled()) {
+            return;
+        }
+
+        $uids = [];
+
+        try {
+            $request = new GetSessionRequest($this->url(), $sessionId);
+            $request->setTimeOut($this->timeout());
+            $json = $request->fetch();
+            FlowTrace::event('GET /sessions/{id} (second look)', FlowTrace::describeSession($json));
+
+            // GET /sessions lists uids in "accounts" and in "accounts_data".
+            foreach ((array) ($json['accounts'] ?? []) as $account) {
+                $uids[] = is_array($account) ? ($account['uid'] ?? null) : $account;
+            }
+            foreach ((array) ($json['accounts_data'] ?? []) as $account) {
+                $uids[] = $account['uid'] ?? null;
+            }
+        } catch (Throwable $e) {
+            FlowTrace::event('GET /sessions/{id} failed', ['error' => $e->getMessage()]);
+        }
+
+        foreach (array_unique(array_filter($uids, 'is_string')) as $uid) {
+            try {
+                $details = new GetAccountDetailsRawRequest($this->url(), $uid);
+                $details->setTimeOut($this->timeout());
+                $raw = $details->fetch();
+                FlowTrace::event('GET /accounts/{uid}/details', [
+                    'uid'     => $uid,
+                    'account' => FlowTrace::describeAccount($raw),
+                    ...(FlowTrace::raw() ? ['raw' => $raw] : []),
+                ]);
+            } catch (Throwable $e) {
+                FlowTrace::event('GET /accounts/{uid}/details failed', ['uid' => $uid, 'error' => $e->getMessage()]);
+            }
+        }
     }
 
     private function url(): string

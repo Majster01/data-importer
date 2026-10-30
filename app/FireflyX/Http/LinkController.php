@@ -11,6 +11,7 @@ namespace App\FireflyX\Http;
 
 use App\FireflyX\EnableBanking\BankAccount;
 use App\FireflyX\EnableBanking\EnableBankingGateway;
+use App\FireflyX\EnableBanking\FlowTrace;
 use App\FireflyX\Import\AccountRemapper;
 use App\FireflyX\Models\Connection;
 use App\FireflyX\Models\PendingAuth;
@@ -224,8 +225,16 @@ final class LinkController extends Controller
      */
     public function callback(Request $request): RedirectResponse
     {
+        FlowTrace::event('callback reached', [
+            'query'      => FlowTrace::describeCallbackQuery($request->query()),
+            'user_agent' => $request->userAgent(),
+            'referer'    => $request->headers->get('referer'),
+        ]);
+
         $pending = PendingAuth::consume((string) $request->query('state', ''));
         if (null === $pending) {
+            FlowTrace::event('callback state not accepted (unknown, used or expired)');
+
             // Without a valid state there is no return path to trust: use Pico's page.
             return $this->backToPico(self::DEFAULT_RETURN_PATH, null, 'error', 'invalid_state');
         }
@@ -233,9 +242,25 @@ final class LinkController extends Controller
         if (null === $connection) {
             return $this->backToPico($pending->return_path, null, 'error', 'connection_gone');
         }
+        FlowTrace::event('callback matched a started consent', [
+            'connection'  => $connection->name,
+            'kind'        => $pending->kind,
+            'bank'        => $connection->bank_name,
+            'psu_type'    => $connection->psu_type,
+            'started_ago' => $pending->created_at?->diffForHumans(),
+            'auth_id'     => $pending->payload['auth_id'] ?? null,
+        ]);
         $code = (string) $request->query('code', '');
         if ('' === $code) {
-            // The user cancelled at the bank, or the bank refused.
+            // The user cancelled at the bank, or the bank refused. Always logged:
+            // Enable Banking says why in error / error_description.
+            Log::warning(sprintf(
+                'FireflyX: no code came back for %s (error=%s, error_description=%s)',
+                $connection->name,
+                (string) $request->query('error', ''),
+                (string) $request->query('error_description', '')
+            ));
+
             return $this->abandon($pending, $connection, 'bank_declined');
         }
 
@@ -251,6 +276,9 @@ final class LinkController extends Controller
             // Consent was given but no account was ticked at the bank (OTP banka does this):
             // there is nothing to import, so the consent is closed and the user tries again.
             Log::warning(sprintf('FireflyX: the bank shared no accounts for %s', $connection->name));
+            // Look at the session once more before it is closed: does GET /sessions
+            // list accounts the POST did not, and what do their details say?
+            $this->gateway->diagnoseSession($session['session_id']);
             $this->deleteQuietly($session['session_id']);
 
             return $this->abandon($pending, $connection, 'no_accounts');

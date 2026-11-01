@@ -1,0 +1,79 @@
+# FireflyX fork: build the importer and deploy it to FireflyX. The fireflyx
+# branch is production: every push to it (a merged PR) is deployed. main tracks
+# upstream and is never deployed. See DEPLOYING.md.
+#
+#   1. image   ghcr.io/majster01/data-importer:<upstream version>-<commit>
+#   2. deploy  FireflyX's "Pin fork image" workflow sets that tag in its compose
+#              file and commits to its master; the server backs up, proves the
+#              backup restores, and deploys master.
+#
+# Needs the secret FIREFLYX_DISPATCH_TOKEN: a fine-grained token for
+# Majster01/FireflyX only, with "Actions: Read and write".
+name: FireflyX deploy
+
+on:
+  push:
+    branches: [fireflyx]
+    paths-ignore: ['**.md']
+
+# A newer push supersedes a build still running.
+concurrency:
+  group: fireflyx-deploy
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # The upstream release this branch is based on: Dockerfile.fireflyx builds
+      # on that release's image, and refuses to build if the two differ.
+      - id: tag
+        run: |
+          version="$(sed -nE "s/^[[:space:]]*'version'[[:space:]]*=>[[:space:]]*'([0-9]+\.[0-9]+\.[0-9]+)'.*/\1/p" config/importer.php)"
+          [ -n "$version" ] || { echo "::error::no x.y.z 'version' in config/importer.php"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$version-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.fireflyx
+          # The FireflyX server is a cx23 (x86). Add linux/arm64 for an ARM one.
+          platforms: linux/amd64
+          build-args: IMPORTER_VERSION=${{ steps.tag.outputs.version }}
+          tags: ghcr.io/majster01/data-importer:${{ steps.tag.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Pin the image in FireflyX, which deploys it
+        env:
+          GH_TOKEN: ${{ secrets.FIREFLYX_DISPATCH_TOKEN }}
+          TAG: ${{ needs.image.outputs.tag }}
+        run: gh workflow run pin.yml --repo Majster01/FireflyX --ref master -f component=importer -f tag="$TAG"

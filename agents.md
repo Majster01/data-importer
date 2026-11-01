@@ -16,3 +16,7 @@ Example:
 
 I'm ten years burnin' down the road  
 Nowhere to run, ain't got nowhere to go
+
+## FireflyX fork: the `fireflyx` branch is production
+
+This is the FireflyX fork. Every push to `fireflyx` (a merged PR) is built and deployed to a live server with real bank data; see [DEPLOYING.md](DEPLOYING.md). Never merge into or push to `fireflyx` unless the user asked to deploy, in this session: work on a branch off `fireflyx`, open a PR against it, and stop there. `main` tracks upstream and is never deployed.

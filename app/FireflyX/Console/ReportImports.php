@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\FireflyX\Console;
 
+use App\FireflyX\Import\ImportNotice;
 use App\FireflyX\Models\Connection;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -23,7 +24,7 @@ final class ReportImports extends Command
     protected $description = 'Check that every importable connection was imported since --since.';
     protected $signature   = 'fireflyx:connections:report
         {--since= : When the import started (ISO 8601)}
-        {--json : Print the result as JSON}';
+        {--json : Print the result as JSON, with the notification text for each connection}';
 
     public function handle(): int
     {
@@ -49,6 +50,8 @@ final class ReportImports extends Command
                 'imported' => $imported,
                 'ok'       => $ok,
                 'summary'  => $imported ? $connection->last_import_summary : null,
+                // What to tell the user (Pocket's notify endpoint takes it as is)
+                'notice'   => ImportNotice::for($connection, $imported ? $connection->last_import_summary : null),
             ];
         }
 

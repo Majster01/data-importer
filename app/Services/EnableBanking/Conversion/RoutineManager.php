@@ -153,7 +153,9 @@ final class RoutineManager implements RoutineManagerInterface
 
         if (0 === $total) {
             Log::warning('Downloaded nothing, will return nothing.');
-            $this->importJob->conversionStatus->addError(0, '[eb003]: No transactions were downloaded from Enable Banking.');
+            // A quiet window is not a failure. Upstream records an error here, which fails the exit code
+            // (isNothingDownloaded() only knows GoCardless' [a111]) and with it FireflyX's nightly report.
+            $this->importJob->conversionStatus->addWarning(0, '[eb003]: No transactions were downloaded from Enable Banking.');
             $this->repository->saveToDisk($this->importJob);
 
             return true;

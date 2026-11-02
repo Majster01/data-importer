@@ -51,6 +51,20 @@ final class StatusTest extends FireflyXTestCase
         $this->assertSame('2026-10-29 12:00:00', $runs[0]->created_at->format('Y-m-d H:i:s'));
     }
 
+    public function testNothingToDownloadIsASuccessWithZeroNew(): void
+    {
+        $this->connection('revolut');
+
+        event(new ImportedTransactions('revolut.json', [], [], [0 => ['[eb003]: No transactions were downloaded from Enable Banking.']], []));
+
+        $run = ImportRun::first();
+        $this->assertTrue($run->ok);
+        $this->assertSame(0, $run->created);
+        $this->assertSame(0, $run->errors);
+        $this->assertNull($run->first_error);
+        $this->assertTrue(Connection::where('name', 'revolut')->first()->last_import_ok);
+    }
+
     public function testAnImportOfAnUnknownConfigLeavesNoRow(): void
     {
         event(new ImportedTransactions('manual-3.json', [0 => ['Created A']], [], [], []));

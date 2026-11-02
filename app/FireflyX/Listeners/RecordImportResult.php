@@ -57,7 +57,11 @@ final class RecordImportResult
      */
     public static function summarize(ImportedTransactions $event): array
     {
-        $errors = self::flatten($event->errors);
+        // eb003: the bank had nothing new to download. That is a successful import of 0 new, not an error.
+        $errors = array_values(array_filter(
+            self::flatten($event->errors),
+            static fn ($error): bool => !is_string($error) || (false === stripos($error, '[eb003]') && false === stripos($error, 'No transactions were downloaded from Enable Banking'))
+        ));
 
         return [
             'messages'    => count(self::flatten($event->messages)),

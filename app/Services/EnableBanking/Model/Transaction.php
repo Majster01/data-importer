@@ -39,6 +39,7 @@ final class Transaction
     public string  $currencyCode          = '';
     public ?Carbon $bookingDate           = null;
     public ?Carbon $valueDate             = null;
+    public ?Carbon $transactionDate       = null;
     public string  $creditorName          = '';
     public string  $creditorIban          = '';
     public string  $creditorBban          = '';
@@ -81,6 +82,9 @@ final class Transaction
         }
         if (array_key_exists('value_date', $array) && null !== $array['value_date']) {
             $transaction->valueDate = Carbon::parse($array['value_date']);
+        }
+        if (array_key_exists('transaction_date', $array) && null !== $array['transaction_date']) {
+            $transaction->transactionDate = Carbon::parse($array['transaction_date']);
         }
         // Also check transaction_date as fallback
         if (null === $transaction->bookingDate && array_key_exists('transaction_date', $array) && null !== $array['transaction_date']) {
@@ -185,6 +189,9 @@ final class Transaction
 
     public function getDate(): Carbon
     {
+        if ($this->transactionDate instanceof Carbon) {
+            return $this->transactionDate;
+        }
         if ($this->bookingDate instanceof Carbon) {
             return $this->bookingDate;
         }
@@ -328,6 +335,7 @@ final class Transaction
             'transaction_amount'     => $this->transactionAmount,
             'currency_code'          => $this->currencyCode,
             'booking_date'           => $this->bookingDate?->toW3cString(),
+            'transaction_date'       => $this->transactionDate?->toW3cString(),
             'value_date'             => $this->valueDate?->toW3cString(),
             'creditor_name'          => $this->creditorName,
             'creditor_iban'          => $this->creditorIban,

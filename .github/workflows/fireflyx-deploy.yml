@@ -1,15 +1,15 @@
-# FireflyX fork: build the importer and deploy it to FireflyX. The fireflyx
-# branch is production: every push to it (a merged PR) is deployed. main tracks
-# upstream and is never deployed. See DEPLOYING.md.
+# Firefly Pocket fork: build the importer and deploy it to firefly-pocket-stack.
+# The fireflyx branch is production: every push to it (a merged PR) is
+# deployed. main tracks upstream and is never deployed. See DEPLOYING.md.
 #
 #   1. image   ghcr.io/majster01/data-importer:<upstream version>-<commit>
-#   2. deploy  FireflyX's "Pin fork image" workflow sets that tag in its compose
+#   2. deploy  firefly-pocket-stack's "Pin fork image" workflow sets that tag in its compose
 #              file and commits to its master; the server backs up, proves the
 #              backup restores, and deploys master.
 #
-# Needs the secret FIREFLYX_DISPATCH_TOKEN: a fine-grained token for
-# Majster01/FireflyX only, with "Actions: Read and write".
-name: FireflyX deploy
+# Needs the secret FIREFLY_POCKET_DISPATCH_TOKEN: a fine-grained token for
+# Majster01/firefly-pocket-stack only, with "Actions: Read and write".
+name: Firefly Pocket deploy
 
 on:
   push:
@@ -56,7 +56,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.fireflyx
-          # The FireflyX server is a cx23 (x86). Add linux/arm64 for an ARM one.
+          # The Firefly Pocket server is a cx23 (x86). Add linux/arm64 for an ARM one.
           platforms: linux/amd64
           build-args: IMPORTER_VERSION=${{ steps.tag.outputs.version }}
           tags: ghcr.io/majster01/data-importer:${{ steps.tag.outputs.tag }}
@@ -72,8 +72,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Pin the image in FireflyX, which deploys it
+      - name: Pin the image in firefly-pocket-stack, which deploys it
         env:
-          GH_TOKEN: ${{ secrets.FIREFLYX_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.FIREFLY_POCKET_DISPATCH_TOKEN }}
           TAG: ${{ needs.image.outputs.tag }}
-        run: gh workflow run pin.yml --repo Majster01/FireflyX --ref master -f component=importer -f tag="$TAG"
+        run: gh workflow run pin.yml --repo Majster01/firefly-pocket-stack --ref master -f component=importer -f tag="$TAG"

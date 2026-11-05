@@ -33,4 +33,7 @@ return [
     ],
     'add_import_ip_header'  => env('ENABLE_BANKING_IMPORT_IP_HEADER', false),
     'import_ip'             => env('ENABLE_BANKING_IMPORT_IP', '127.0.0.1'),
+    // FireflyX: PSU-* headers of the person behind the current run, set at runtime
+    // by fireflyx:manual-import. Never set from the environment.
+    'psu_headers'           => [],
 ];

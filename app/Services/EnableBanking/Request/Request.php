@@ -125,6 +125,14 @@ abstract class Request
                 Log::warning(sprintf('IP "%s" NOT is valid.', $ip));
             }
         }
+        // FireflyX: a manual import started by a person in Pico sends that person's
+        // PSU-* headers (set per run in RunManualImport). They replace the
+        // static PSU-IP-Address above, which is the server's own.
+        foreach ((array) config('eb.psu_headers', []) as $name => $value) {
+            if (is_string($name) && is_string($value) && '' !== $value) {
+                $headers[$name] = $value;
+            }
+        }
         $filteredHeaders = $headers;
         unset($filteredHeaders['Authorization']);
         Log::debug('Call to getHeaders() with final headers (Authorization is removed): ', $filteredHeaders);

@@ -72,6 +72,46 @@ final class ManualImportTest extends FireflyXTestCase
         $this->getJson('/api/fireflyx/v1/connections/nlb', $this->auth())->assertJsonPath('data.manual_import.status', 'queued');
     }
 
+    public function testTheRunSendsTheCallersPsuHeadersAndNothingStaysSetAfterwards(): void
+    {
+        $this->connection('nlb');
+        Http::fake(['suggester.test/*' => Http::response(['written' => 0])]);
+        $this->importer->result = new ImportedTransactions('x.json', [0 => ['a']], [], [], []);
+
+        $this->start('nlb', '2026-09-01', '2026-09-30', ['ip_address' => '203.0.113.7', 'user_agent' => "Mozilla/5.0 (iPhone)\r\nX-Evil: 1"])->assertStatus(202);
+        $run = ManualImport::firstOrFail();
+        $this->assertSame('203.0.113.7', $run->psu_ip_address);
+
+        $this->artisan('fireflyx:manual-import', ['id' => $run->id])->assertSuccessful();
+
+        $this->assertSame(['PSU-IP-Address' => '203.0.113.7', 'PSU-User-Agent' => 'Mozilla/5.0 (iPhone) X-Evil: 1'], $this->importer->psu);
+        $this->assertSame([], config('eb.psu_headers'), 'the night\'s import in the same process would be unattended');
+    }
+
+    public function testAnAddressThatTellsTheBankNothingIsNotSent(): void
+    {
+        $this->connection('nlb');
+
+        foreach (['127.0.0.1', '172.18.0.4', '10.0.0.2', 'not an ip', '', null, ['x']] as $ip) {
+            ManualImport::query()->delete();
+            $this->start('nlb', '2026-09-01', '2026-09-30', ['ip_address' => $ip])->assertStatus(202);
+            $this->assertNull(ManualImport::firstOrFail()->psu_ip_address, var_export($ip, true));
+        }
+
+        ManualImport::query()->delete();
+        $this->start('nlb', '2026-09-01', '2026-09-30')->assertStatus(202);
+        $this->assertSame([], ManualImport::firstOrFail()->psuHeaders(), 'without PSU data the run is as unattended as before');
+    }
+
+    public function testIpv6AddressesAreAccepted(): void
+    {
+        $this->connection('nlb');
+
+        $this->start('nlb', '2026-09-01', '2026-09-30', ['ip_address' => '2a00:1450:4001:81b::200e'])->assertStatus(202);
+
+        $this->assertSame(['PSU-IP-Address' => '2a00:1450:4001:81b::200e'], ManualImport::firstOrFail()->psuHeaders());
+    }
+
     public function testRefusesWhatCannotBeImported(): void
     {
         $this->connection('nlb');
@@ -221,9 +261,14 @@ final class ManualImportTest extends FireflyXTestCase
         return json_decode((string) file_get_contents($this->importDir.'/nlb.json'), true);
     }
 
-    private function start(string $name, string $from, string $to): \Illuminate\Testing\TestResponse
+    private function start(string $name, string $from, string $to, ?array $psu = null): \Illuminate\Testing\TestResponse
     {
-        return $this->postJson("/api/fireflyx/v1/connections/{$name}/imports", ['date_from' => $from, 'date_to' => $to], $this->auth());
+        $body = ['date_from' => $from, 'date_to' => $to];
+        if (null !== $psu) {
+            $body['psu'] = $psu;
+        }
+
+        return $this->postJson("/api/fireflyx/v1/connections/{$name}/imports", $body, $this->auth());
     }
 
     private function queued(string $name, string $from, string $to): ManualImport
@@ -265,10 +310,12 @@ final class FakeImporter implements ConfigImporter
     public int $exitCode                 = 0;
     public int $calls                    = 0;
     public array $config                 = [];
+    public array $psu                    = [];
 
     public function import(string $configFile): array
     {
         ++$this->calls;
+        $this->psu    = config('eb.psu_headers');
         $this->config = json_decode((string) file_get_contents($configFile), true, 512, JSON_THROW_ON_ERROR);
         if (!str_contains($configFile, '/manual/') || !str_ends_with($configFile, '.json')) {
             throw new RuntimeException('manual imports must not be rendered where the nightly import looks');

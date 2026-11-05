@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int         $connection_id
  * @property Carbon      $date_from
  * @property Carbon      $date_to
+ * @property null|string $psu_ip_address
+ * @property null|string $psu_user_agent
  * @property string      $status
  * @property null|array  $summary
  * @property null|string $error
@@ -70,6 +72,26 @@ final class ManualImport extends Model
     {
         return self::whereIn('status', self::ACTIVE)
             ->where('updated_at', '>', Carbon::now()->subMinutes(self::STALE_AFTER_MINUTES));
+    }
+
+    /**
+     * The PSU-* headers that tell the bank a person is present for this run
+     * (Enable Banking passes them on). Empty when Pico sent nothing usable,
+     * in which case the run is unattended like the night's import.
+     *
+     * @return array<string, string>
+     */
+    public function psuHeaders(): array
+    {
+        $headers = [];
+        if (is_string($this->psu_ip_address) && '' !== $this->psu_ip_address) {
+            $headers['PSU-IP-Address'] = $this->psu_ip_address;
+        }
+        if (is_string($this->psu_user_agent) && '' !== $this->psu_user_agent) {
+            $headers['PSU-User-Agent'] = $this->psu_user_agent;
+        }
+
+        return $headers;
     }
 
     public function isActive(): bool

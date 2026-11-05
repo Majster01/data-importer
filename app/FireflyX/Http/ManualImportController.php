@@ -45,13 +45,22 @@ final class ManualImportController extends Controller
             return response()->json(['error' => sprintf('This connection cannot be imported (%s)', $connection->status())], 422);
         }
 
+        $psuIp      = self::cleanIp($request->input('psu.ip_address'));
+        $psuAgent   = self::cleanAgent($request->input('psu.user_agent'));
+
         // Check and create under one lock, or two taps could both pass.
-        $run = Cache::lock('fireflyx-manual-import', 10)->block(5, static function () use ($connection, $from, $to): ?ManualImport {
+        $run = Cache::lock('fireflyx-manual-import', 10)->block(5, static function () use ($connection, $from, $to, $psuIp, $psuAgent): ?ManualImport {
             if (ManualImport::active()->exists()) {
                 return null;
             }
 
-            return $connection->manualImports()->create(['date_from' => $from, 'date_to' => $to, 'status' => ManualImport::QUEUED]);
+            return $connection->manualImports()->create([
+                'date_from'      => $from,
+                'date_to'        => $to,
+                'status'         => ManualImport::QUEUED,
+                'psu_ip_address' => $psuIp,
+                'psu_user_agent' => $psuAgent,
+            ]);
         });
         if (!$run instanceof ManualImport) {
             return response()->json(['error' => 'Another manual import is still running'], 409);
@@ -67,7 +76,34 @@ final class ManualImportController extends Controller
     }
 
     /**
-     * Strictly YYYY-MM-DD: "2026-02-31" must not roll over into March.
+     * A public address only: a private or reserved one (the proxy's own, say)
+     * would tell the bank nothing, so it is dropped rather than sent.
+     */
+    private static function cleanIp(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $value = trim($value);
+
+        return false === filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) ? null : $value;
+    }
+
+    /**
+     * Printable ASCII only (it becomes an HTTP header value) and bounded.
+     */
+    private static function cleanAgent(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $value = substr(trim((string) preg_replace('/[^\x20-\x7e]+/', ' ', $value)), 0, 512);
+
+        return '' === $value ? null : $value;
+    }
+
+    /**
+     * Strictly YYYY-MM-DD:"2026-02-31" must not roll over into March.
      */
     private static function parseDay(mixed $value): ?Carbon
     {

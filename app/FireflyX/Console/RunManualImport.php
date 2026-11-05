@@ -47,6 +47,11 @@ final class RunManualImport extends Command
             return self::FAILURE;
         }
 
+        // Someone is at the bank's door for this run: every Enable Banking call
+        // it makes carries their PSU-* headers (see Request::getHeaders()).
+        // The nightly import never sets them. It is a separate process anyway.
+        config(['eb.psu_headers' => $run->psuHeaders()]);
+
         try {
             $outcome = $importer->import($file);
         } catch (Throwable $e) {
@@ -54,6 +59,7 @@ final class RunManualImport extends Command
 
             return self::FAILURE;
         } finally {
+            config(['eb.psu_headers' => []]);
             if (is_file($file)) {
                 unlink($file);
             }

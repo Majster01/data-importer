@@ -16,7 +16,7 @@ use Carbon\Carbon;
 use Tests\FireflyXTestCase;
 
 /**
- * Re-authenticate from Pico: reauth → bank → /fireflyx/eb-callback → Pico.
+ * Re-authenticate from Firefly Pocket: reauth → bank → /fireflyx/eb-callback → Firefly Pocket.
  */
 final class RelinkTest extends FireflyXTestCase
 {
@@ -29,7 +29,7 @@ final class RelinkTest extends FireflyXTestCase
         $this->app->instance(EnableBankingGateway::class, $this->bank);
         config([
             'fireflyx.callback_url' => 'https://import.example.test/eb-callback',
-            'fireflyx.pico_url'     => 'https://pico.example.test',
+            'fireflyx.app_url'     => 'https://app.example.test',
         ]);
     }
 
@@ -49,7 +49,7 @@ final class RelinkTest extends FireflyXTestCase
         $this->assertSame(180, Connection::where('name', 'nlb')->first()->max_consent_days);
     }
 
-    public function testReauthRefusesAnythingButAPicoPath(): void
+    public function testReauthRefusesAnythingButAFireflyPocketPath(): void
     {
         $this->nlb();
 
@@ -60,7 +60,7 @@ final class RelinkTest extends FireflyXTestCase
         $this->assertSame([], $this->bank->called('startAuthorisation'));
     }
 
-    public function testCallbackSwapsSessionAndUidsAndSendsTheUserBackToPico(): void
+    public function testCallbackSwapsSessionAndUidsAndSendsTheUserBackToFireflyPocket(): void
     {
         $this->nlb();
         $state                   = $this->startReauth();
@@ -70,7 +70,7 @@ final class RelinkTest extends FireflyXTestCase
         ]];
 
         $this->get('/fireflyx/eb-callback?state='.$state.'&code=the-code')
-            ->assertRedirect('https://pico.example.test/bank-connections?connection=nlb&result=ok');
+            ->assertRedirect('https://app.example.test/bank-connections?connection=nlb&result=ok');
 
         $connection = Connection::with('accounts')->where('name', 'nlb')->first();
         $this->assertSame('session-new', $connection->session_id);
@@ -82,7 +82,7 @@ final class RelinkTest extends FireflyXTestCase
 
         // The state is single use: a replayed callback does nothing.
         $this->get('/fireflyx/eb-callback?state='.$state.'&code=the-code')
-            ->assertRedirect('https://pico.example.test/bank-connections/list?result=error&reason=invalid_state');
+            ->assertRedirect('https://app.example.test/bank-connections/list?result=error&reason=invalid_state');
         $this->assertCount(1, $this->bank->called('createSession'));
     }
 
@@ -94,7 +94,7 @@ final class RelinkTest extends FireflyXTestCase
             ['uid' => 'uid-new', 'account_id' => ['iban' => 'SI56191000000123438']],
         ]];
 
-        $this->get('/fireflyx/eb-callback?state='.$state.'&code=c')->assertRedirect('https://pico.example.test/bank-connections?connection=nlb&result=ok');
+        $this->get('/fireflyx/eb-callback?state='.$state.'&code=c')->assertRedirect('https://app.example.test/bank-connections?connection=nlb&result=ok');
         $this->assertSame('hash-1', Connection::with('accounts')->where('name', 'nlb')->first()->accounts->first()->identification_hash);
     }
 
@@ -107,7 +107,7 @@ final class RelinkTest extends FireflyXTestCase
         ]];
 
         $this->get('/fireflyx/eb-callback?state='.$state.'&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections?connection=nlb&result=needs_mapping&reason=unmatched_accounts');
+            ->assertRedirect('https://app.example.test/bank-connections?connection=nlb&result=needs_mapping&reason=unmatched_accounts');
 
         $this->assertSame('session-old', Connection::where('name', 'nlb')->first()->session_id);
         $this->assertSame([['deleteSession', 'session-new']], $this->bank->called('deleteSession'), 'the unused new consent is closed');
@@ -118,15 +118,15 @@ final class RelinkTest extends FireflyXTestCase
         $this->nlb();
         $declined = $this->startReauth();
         $this->get('/fireflyx/eb-callback?state='.$declined.'&error=access_denied')
-            ->assertRedirect('https://pico.example.test/bank-connections?connection=nlb&result=error&reason=bank_declined');
+            ->assertRedirect('https://app.example.test/bank-connections?connection=nlb&result=error&reason=bank_declined');
 
         $expired = $this->startReauth();
         PendingAuth::whereKey($expired)->update(['expires_at' => Carbon::now()->subMinute()]);
         $this->get('/fireflyx/eb-callback?state='.$expired.'&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections/list?result=error&reason=invalid_state');
+            ->assertRedirect('https://app.example.test/bank-connections/list?result=error&reason=invalid_state');
 
         $this->get('/fireflyx/eb-callback?state=5f0c2a9e-1111-4222-8333-944455556666&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections/list?result=error&reason=invalid_state');
+            ->assertRedirect('https://app.example.test/bank-connections/list?result=error&reason=invalid_state');
 
         $this->assertSame([], $this->bank->called('createSession'));
         $this->assertSame('session-old', Connection::where('name', 'nlb')->first()->session_id);
@@ -139,7 +139,7 @@ final class RelinkTest extends FireflyXTestCase
         $this->bank->failCreateSession = true;
 
         $this->get('/fireflyx/eb-callback?state='.$state.'&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections?connection=nlb&result=error&reason=session_failed');
+            ->assertRedirect('https://app.example.test/bank-connections?connection=nlb&result=error&reason=session_failed');
         $this->assertSame('session-old', Connection::where('name', 'nlb')->first()->session_id);
     }
 

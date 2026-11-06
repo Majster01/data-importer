@@ -16,7 +16,7 @@ use Carbon\Carbon;
 use Tests\FireflyXTestCase;
 
 /**
- * Add a bank from Pico: banks → create → bank → /fireflyx/eb-callback → map accounts.
+ * Add a bank from Firefly Pocket: banks → create → bank → /fireflyx/eb-callback → map accounts.
  */
 final class NewConnectionTest extends FireflyXTestCase
 {
@@ -33,7 +33,7 @@ final class NewConnectionTest extends FireflyXTestCase
         $this->app->instance(EnableBankingGateway::class, $this->bank);
         config([
             'fireflyx.callback_url' => 'https://import.example.test/eb-callback',
-            'fireflyx.pico_url'     => 'https://pico.example.test',
+            'fireflyx.app_url'     => 'https://app.example.test',
         ]);
     }
 
@@ -109,7 +109,7 @@ final class NewConnectionTest extends FireflyXTestCase
         ]];
 
         $this->get('/fireflyx/eb-callback?state='.$this->state().'&code=the-code')
-            ->assertRedirect('https://pico.example.test/bank-connections/setup?connection=nlb&result=ok');
+            ->assertRedirect('https://app.example.test/bank-connections/setup?connection=nlb&result=ok');
 
         $connection = Connection::with('accounts')->where('name', 'nlb')->first();
         $this->assertSame([Connection::LIFECYCLE_NEEDS_MAPPING, 'session-new', 'new-auth-id'], [$connection->lifecycle, $connection->session_id, $connection->auth_id]);
@@ -128,13 +128,13 @@ final class NewConnectionTest extends FireflyXTestCase
     {
         $this->create();
         $this->get('/fireflyx/eb-callback?state='.$this->state().'&error=access_denied')
-            ->assertRedirect('https://pico.example.test/bank-connections/list?connection=nlb&result=error&reason=bank_declined');
+            ->assertRedirect('https://app.example.test/bank-connections/list?connection=nlb&result=error&reason=bank_declined');
         $this->assertSame(0, Connection::withTrashed()->count());
 
         $this->create();
         $this->bank->failCreateSession = true;
         $this->get('/fireflyx/eb-callback?state='.$this->state().'&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections/list?connection=nlb&result=error&reason=session_failed');
+            ->assertRedirect('https://app.example.test/bank-connections/list?connection=nlb&result=error&reason=session_failed');
         $this->assertSame(0, Connection::withTrashed()->count());
     }
 
@@ -144,7 +144,7 @@ final class NewConnectionTest extends FireflyXTestCase
         $this->bank->nextSession = ['session_id' => 'session-empty', 'accounts' => []];
 
         $this->get('/fireflyx/eb-callback?state='.$this->state().'&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections/list?connection=nlb&result=error&reason=no_accounts');
+            ->assertRedirect('https://app.example.test/bank-connections/list?connection=nlb&result=error&reason=no_accounts');
 
         $this->assertSame([['deleteSession', 'session-empty']], $this->bank->called('deleteSession'), 'the useless consent is closed');
         $this->assertSame([['diagnoseSession', 'session-empty']], $this->bank->called('diagnoseSession'), 'and looked at once more first');
@@ -163,7 +163,7 @@ final class NewConnectionTest extends FireflyXTestCase
         // Still nothing shared: the old connection stays as it is.
         $this->bank->nextSession = ['session_id' => 'session-empty', 'accounts' => []];
         $this->get('/fireflyx/eb-callback?state='.$this->state().'&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections/list?connection=otp-banka&result=error&reason=no_accounts');
+            ->assertRedirect('https://app.example.test/bank-connections/list?connection=otp-banka&result=error&reason=no_accounts');
         $this->assertSame('session-old', Connection::where('name', 'otp-banka')->first()->session_id);
 
         // The account is ticked this time.
@@ -172,7 +172,7 @@ final class NewConnectionTest extends FireflyXTestCase
             ['uid' => 'uid-1', 'identification_hash' => 'hash-1', 'account_id' => ['iban' => 'SI56191000000123438'], 'currency' => 'EUR'],
         ]];
         $this->get('/fireflyx/eb-callback?state='.$this->state().'&code=c')
-            ->assertRedirect('https://pico.example.test/bank-connections/setup?connection=otp-banka&result=ok');
+            ->assertRedirect('https://app.example.test/bank-connections/setup?connection=otp-banka&result=ok');
 
         $connection = Connection::with('accounts')->where('name', 'otp-banka')->first();
         $this->assertSame(['needs_mapping', 'session-new'], [$connection->status(), $connection->session_id]);

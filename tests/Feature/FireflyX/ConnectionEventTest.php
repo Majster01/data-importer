@@ -30,7 +30,7 @@ final class ConnectionEventTest extends FireflyXTestCase
         $this->bank        = new FakeGateway();
         $this->bank->banks = ['SI' => [['name' => 'NLB', 'country' => 'SI', 'logo' => null, 'max_consent_days' => 180, 'psu_types' => ['personal']]]];
         $this->app->instance(EnableBankingGateway::class, $this->bank);
-        config(['fireflyx.callback_url' => 'https://import.example.test/eb-callback', 'fireflyx.pico_url' => 'https://pico.example.test']);
+        config(['fireflyx.callback_url' => 'https://import.example.test/eb-callback', 'fireflyx.app_url' => 'https://app.example.test']);
         Carbon::setTestNow('2026-10-29 12:00:00');
     }
 

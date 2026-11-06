@@ -27,20 +27,19 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Re-authorising a connection from Pico.
+ * Linking and re-authorising a connection from Firefly Pocket.
  *
- * Enable Banking only redirects to registered URLs, and the one registered is
- * upstream's /eb-callback. Our state starts with "fx-", upstream's is a UUID,
- * so Caddy rewrites our callbacks to /fireflyx/eb-callback and upstream never
- * sees them.
+ * Enable Banking only redirects to registered URLs, each an /eb-callback. Our
+ * state starts with "fx-", upstream's is a UUID, so Caddy rewrites our
+ * callbacks to /fireflyx/eb-callback and upstream never sees them.
  */
 final class LinkController extends Controller
 {
-    // Pico's bank connections page.
+    // Firefly Pocket's bank connections page.
     private const string DEFAULT_RETURN_PATH = '/bank-connections/list';
 
-    // Where a new connection lands once the bank has given consent: Pico's
-    // page for mapping its accounts. Failures go to the request's return_path.
+    // Where a new connection lands once the bank has given consent: Firefly
+    // Pocket's page for mapping its accounts. Failures go to the request's return_path.
     private const string SETUP_PATH = '/bank-connections/setup';
 
     // How far back a first import may reach (design doc, open question 3).
@@ -242,14 +241,14 @@ final class LinkController extends Controller
             FlowTrace::event('callback state not accepted (unknown, used or expired)');
             ConnectionEvent::record(null, 'callback_rejected', ConnectionEvent::ERROR, 'invalid_state', 'The consent link was unknown, already used or expired.');
 
-            // Without a valid state there is no return path to trust: use Pico's page.
-            return $this->backToPico(self::DEFAULT_RETURN_PATH, null, 'error', 'invalid_state');
+            // Without a valid state there is no return path to trust: use Firefly Pocket's page.
+            return $this->backToApp(self::DEFAULT_RETURN_PATH, null, 'error', 'invalid_state');
         }
         $connection = $pending->connection;
         if (null === $connection) {
             ConnectionEvent::record(null, 'callback_rejected', ConnectionEvent::ERROR, 'connection_gone', 'The connection was removed while the consent was open.', $pending->kind);
 
-            return $this->backToPico($pending->return_path, null, 'error', 'connection_gone');
+            return $this->backToApp($pending->return_path, null, 'error', 'connection_gone');
         }
         FlowTrace::event('callback matched a started consent', [
             'connection'  => $connection->name,
@@ -308,7 +307,7 @@ final class LinkController extends Controller
             ConnectionEvent::record($connection, 'relink_unmatched', ConnectionEvent::WARNING, 'unmatched_accounts', sprintf('%d bank account(s) could not be matched to the existing ones; the old consent was kept.', count($remap['unmatched'])), $pending->kind);
             $this->deleteQuietly($session['session_id']);
 
-            return $this->backToPico($pending->return_path, $connection->name, 'needs_mapping', 'unmatched_accounts');
+            return $this->backToApp($pending->return_path, $connection->name, 'needs_mapping', 'unmatched_accounts');
         }
 
         $oldSession   = $connection->session_id;
@@ -337,8 +336,8 @@ final class LinkController extends Controller
         ConnectionEvent::record($connection, 'consent_completed', ConnectionEvent::INFO, null, sprintf('%d bank account(s) shared.', count($session['accounts'])), $pending->kind);
 
         return $needsMapping
-            ? $this->backToPico(self::SETUP_PATH, $connection->name, 'ok', null)
-            : $this->backToPico($pending->return_path, $connection->name, 'ok', null);
+            ? $this->backToApp(self::SETUP_PATH, $connection->name, 'ok', null)
+            : $this->backToApp($pending->return_path, $connection->name, 'ok', null);
     }
 
     /**
@@ -367,7 +366,7 @@ final class LinkController extends Controller
         });
         ConnectionEvent::record($connection, 'consent_completed', ConnectionEvent::INFO, null, sprintf('%d bank account(s) shared.', count($session['accounts'])), $pending->kind);
 
-        return $this->backToPico(self::SETUP_PATH, $connection->name, 'ok', null);
+        return $this->backToApp(self::SETUP_PATH, $connection->name, 'ok', null);
     }
 
     /**
@@ -380,7 +379,7 @@ final class LinkController extends Controller
             $connection->forceDelete();
         }
 
-        return $this->backToPico($pending->return_path, $connection->name, 'error', $reason);
+        return $this->backToApp($pending->return_path, $connection->name, 'error', $reason);
     }
 
     private function freeName(string $bank, string $country): string
@@ -400,11 +399,11 @@ final class LinkController extends Controller
         return 1 === preg_match('#^/bank-connections(/[A-Za-z0-9/_-]*)?$#', $path);
     }
 
-    private function backToPico(string $path, ?string $name, string $result, ?string $reason): RedirectResponse
+    private function backToApp(string $path, ?string $name, string $result, ?string $reason): RedirectResponse
     {
         $query = array_filter(['connection' => $name, 'result' => $result, 'reason' => $reason], static fn (?string $value): bool => null !== $value);
 
-        return redirect()->away(sprintf('%s%s?%s', rtrim((string) config('fireflyx.pico_url'), '/'), $path, http_build_query($query)));
+        return redirect()->away(sprintf('%s%s?%s', rtrim((string) config('fireflyx.app_url'), '/'), $path, http_build_query($query)));
     }
 
     private function deleteQuietly(string $sessionId): void

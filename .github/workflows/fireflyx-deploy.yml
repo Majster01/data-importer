@@ -2,10 +2,12 @@
 # The fireflyx branch is production: every push to it (a merged PR) is
 # deployed. main tracks upstream and is never deployed. See DEPLOYING.md.
 #
-#   1. image   ghcr.io/majster01/data-importer:<upstream version>-<commit>
+#   1. image   ghcr.io/majster01/data-importer:<upstream version>-<commit>, for
+#              linux/amd64 and linux/arm64
 #   2. deploy  firefly-pocket-stack's "Pin fork image" workflow sets that tag in its compose
-#              file and commits to its master; the server backs up, proves the
-#              backup restores, and deploys master.
+#              file on a pin PR, which merges itself once its CI is green; the
+#              server backs up, proves the backup restores, and deploys
+#              firefly-pocket-stack's master.
 #
 # Needs the secret FIREFLY_POCKET_DISPATCH_TOKEN: a fine-grained token for
 # Majster01/firefly-pocket-stack only, with "Actions: Read and write".
@@ -44,7 +46,11 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$version-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      # linux/arm64 builds under QEMU on this x86 runner.
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v3
         with:
@@ -56,8 +62,9 @@ jobs:
         with:
           context: .
           file: Dockerfile.fireflyx
-          # The Firefly Pocket server is a cx23 (x86). Add linux/arm64 for an ARM one.
-          platforms: linux/amd64
+          # The server is a cx23 (x86); an ARM server runs the same tag. The
+          # upstream image is published for both.
+          platforms: linux/amd64,linux/arm64
           build-args: IMPORTER_VERSION=${{ steps.tag.outputs.version }}
           tags: ghcr.io/majster01/data-importer:${{ steps.tag.outputs.tag }}
           labels: |

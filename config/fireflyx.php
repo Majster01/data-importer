@@ -8,8 +8,8 @@
 declare(strict_types=1);
 
 return [
-    // Shared secret for /api/fireflyx/v1. Pico's backend sends it as a Bearer
-    // token; anything shorter than 32 characters disables the API entirely.
+    // Shared secret for /api/fireflyx/v1. Firefly Pocket's backend sends it as
+    // a Bearer token; anything shorter than 32 characters disables the API.
     'api_token'      => env('FIREFLYX_API_TOKEN', ''),
 
     // The one import config every connection shares (committed in FireflyX as
@@ -37,9 +37,10 @@ return [
     // FIREFLYX_CALLBACK_URL is its old name, read when the new one is unset.
     'callback_url'   => env('FIREFLY_POCKET_CALLBACK_URL', env('FIREFLYX_CALLBACK_URL', '')),
 
-    // Where the user lands after the bank: Pico's public URL. Only a path from
-    // the request is appended, so this is the one possible redirect target.
-    'pico_url'       => env('FIREFLYX_PICO_URL', ''),
+    // Where the user lands after the bank: Firefly Pocket's public URL. Only a
+    // path from the request is appended, so this is the one possible redirect
+    // target. FIREFLYX_PICO_URL is its old name, read when the new one is unset.
+    'app_url'        => env('FIREFLY_POCKET_APP_URL', env('FIREFLYX_PICO_URL', '')),
 
     // How long a started consent may take before its state stops working.
     'auth_ttl'       => (int) env('FIREFLYX_AUTH_TTL_MINUTES', 15),

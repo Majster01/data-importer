@@ -4,8 +4,8 @@
 
 ## What a merge into `fireflyx` does
 
-1. **Build** (`.github/workflows/fireflyx-deploy.yml`): `Dockerfile.fireflyx` on top of the official image of the upstream release this branch is based on, the `'version'` in `config/importer.php`. The image is pushed to GHCR as `ghcr.io/majster01/data-importer:<version>-<commit>`, for example `2.3.5-d89f2ba`.
-2. **Pin**: the workflow starts *Pin fork image* in [firefly-pocket-stack](https://github.com/Majster01/firefly-pocket-stack), which writes that tag into `compose/docker-compose.yml` and commits `Bump importer to <tag>` to its `master`.
+1. **Build** (`.github/workflows/fireflyx-deploy.yml`): `Dockerfile.fireflyx` on top of the official image of the upstream release this branch is based on, the `'version'` in `config/importer.php`. The image is built for `linux/amd64` and `linux/arm64` (under QEMU) and pushed to GHCR as `ghcr.io/majster01/data-importer:<version>-<commit>`, for example `2.3.5-d89f2ba`. Both platforms share the tag, so an ARM server runs the same one.
+2. **Pin**: the workflow starts *Pin fork image* in [firefly-pocket-stack](https://github.com/Majster01/firefly-pocket-stack), which writes that tag into `compose/docker-compose.yml` on a PR, `Bump importer to <tag>`. The PR merges itself into its `master` once firefly-pocket-stack's CI passes, which boots the whole stack with the new image first.
 3. **Deploy**: the server checks firefly-pocket-stack's `master` every two minutes. Because the importer migrates its database on start, and that database holds the encrypted bank sessions, the server first backs up every database and proves the backup restores. Then it pulls the image and restarts the importer. A failed step arrives as a push (ntfy and the Firefly Pocket app); a deploy that moved the importer's version says "Upgrade successful" in the app.
 
 A push that only changes `*.md` builds and deploys nothing.

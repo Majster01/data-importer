@@ -134,9 +134,9 @@ final class LinkController extends Controller
     {
         $callback = (string) config('fireflyx.callback_url');
         if ('' === $callback) {
-            ConnectionEvent::record($connection, 'consent_start_failed', ConnectionEvent::ERROR, 'no_callback_url', 'FIREFLYX_CALLBACK_URL is not configured.', $kind);
+            ConnectionEvent::record($connection, 'consent_start_failed', ConnectionEvent::ERROR, 'no_callback_url', 'FIREFLY_POCKET_CALLBACK_URL is not configured.', $kind);
 
-            return response()->json(['error' => 'FIREFLYX_CALLBACK_URL is not configured'], 500);
+            return response()->json(['error' => 'FIREFLY_POCKET_CALLBACK_URL is not configured'], 500);
         }
         $connection->max_consent_days = intdiv($maxSeconds, 86_400);
         $connection->save();

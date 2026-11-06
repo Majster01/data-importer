@@ -31,9 +31,11 @@ return [
     // check is older than this.
     'refresh_after'  => (int) env('FIREFLYX_REFRESH_AFTER_MINUTES', 60),
 
-    // The redirect URL registered with Enable Banking: upstream's own callback
-    // on the public importer host, e.g. https://import.example.com/eb-callback.
-    'callback_url'   => env('FIREFLYX_CALLBACK_URL', ''),
+    // The redirect URL registered with Enable Banking for links started from
+    // Firefly Pocket, e.g. https://app.example.com/eb-callback: Caddy sends
+    // our ("fx-" state) callbacks on that host to /fireflyx/eb-callback.
+    // FIREFLYX_CALLBACK_URL is its old name, read when the new one is unset.
+    'callback_url'   => env('FIREFLY_POCKET_CALLBACK_URL', env('FIREFLYX_CALLBACK_URL', '')),
 
     // Where the user lands after the bank: Pico's public URL. Only a path from
     // the request is appended, so this is the one possible redirect target.

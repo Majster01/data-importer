@@ -25,6 +25,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Import;
 
 use App\Exceptions\ImporterErrorException;
+use App\FireflyX\EnableBanking\RedirectUrl;
 use App\Http\Controllers\Controller;
 use App\Services\Akahu\AuthenticationValidator as AkahuValidator;
 use App\Services\EnableBanking\AuthenticationValidator as EnableBankingValidator;
@@ -83,7 +84,8 @@ final class AuthenticateController extends Controller
         if (AuthenticationStatus::NODATA === $result) {
             // need to get and present the auth data in the system (yes it is always empty).
             $data    = $validator->getData();
-            $route   = route('eb-connect.callback');
+            // FireflyX: the redirect URL to register, as the flow asks for it (RedirectUrl).
+            $route   = RedirectUrl::forImporterFlow();
             $isHttps = str_starts_with($route, 'https://');
 
             return view('import.002-authenticate.index')->with(compact('mainTitle', 'flow', 'subTitle', 'pageTitle', 'data', 'error', 'route', 'isHttps'));

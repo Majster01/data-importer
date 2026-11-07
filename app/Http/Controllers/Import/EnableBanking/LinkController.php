@@ -25,6 +25,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Import\EnableBanking;
 
 use App\Exceptions\ImporterHttpException;
+use App\FireflyX\EnableBanking\RedirectUrl;
 use App\Http\Controllers\Controller;
 use App\Repository\ImportJob\ImportJobRepository;
 use App\Services\EnableBanking\Model\Account;
@@ -70,7 +71,8 @@ final class LinkController extends Controller
         }
 
         $url           = config('eb.url');
-        $callbackUrl   = route('eb-connect.callback');
+        // FireflyX: the redirect URL registered for Firefly Pocket, see RedirectUrl.
+        $callbackUrl   = RedirectUrl::forImporterFlow();
 
         Log::debug(sprintf('Enable Banking redirect URL: %s', $callbackUrl));
 

@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\FireflyX\Http;
 
 use App\FireflyX\Import\ManualImportLauncher;
+use App\FireflyX\Import\PsuDetails;
 use App\FireflyX\Models\Connection;
 use App\FireflyX\Models\ManualImport;
 use Carbon\Carbon;
@@ -17,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -28,7 +30,11 @@ final class ManualImportController extends Controller
     public function __construct(private readonly ManualImportLauncher $launcher) {}
 
     /**
-     * POST /api/fireflyx/v1/connections/{name}/imports {date_from, date_to}
+     * POST /api/fireflyx/v1/connections/{name}/imports {date_from, date_to, psu_ip?, psu_user_agent?}
+     *
+     * The optional psu_* fields are the tapping user's address and User-Agent,
+     * which mark the run as user-initiated at the bank. Unusable ones are
+     * ignored: tagging is never a reason to refuse the import.
      */
     public function store(Request $request, string $name): JsonResponse
     {
@@ -46,12 +52,22 @@ final class ManualImportController extends Controller
         }
 
         // Check and create under one lock, or two taps could both pass.
-        $run = Cache::lock('fireflyx-manual-import', 10)->block(5, static function () use ($connection, $from, $to): ?ManualImport {
+        $psu = ['psu_ip' => PsuDetails::ip($request->input('psu_ip')), 'psu_user_agent' => PsuDetails::userAgent($request->input('psu_user_agent'))];
+        foreach ($psu as $field => $value) {
+            if (null === $value && null !== $request->input($field)) {
+                // Never the value itself.
+                Log::info(sprintf('FireflyX: manual import of "%s": %s was not usable and is left out.', $name, $field));
+            }
+        }
+        $run = Cache::lock('fireflyx-manual-import', 10)->block(5, static function () use ($connection, $from, $to, $psu): ?ManualImport {
             if (ManualImport::active()->exists()) {
                 return null;
             }
+            // Nothing is running, so any run still holding a user's details died before it could wipe them.
+            ManualImport::query()->where(static fn ($q) => $q->whereNotNull('psu_ip')->orWhereNotNull('psu_user_agent'))
+                ->update(['psu_ip' => null, 'psu_user_agent' => null]);
 
-            return $connection->manualImports()->create(['date_from' => $from, 'date_to' => $to, 'status' => ManualImport::QUEUED]);
+            return $connection->manualImports()->create(['date_from' => $from, 'date_to' => $to, 'status' => ManualImport::QUEUED, ...$psu]);
         });
         if (!$run instanceof ManualImport) {
             return response()->json(['error' => 'Another manual import is still running'], 409);
@@ -60,7 +76,7 @@ final class ManualImportController extends Controller
         try {
             $this->launcher->launch($run);
         } catch (Throwable $e) {
-            $run->update(['status' => ManualImport::FAILED, 'error' => 'The import could not be started.', 'finished_at' => Carbon::now()]);
+            $run->update(['status' => ManualImport::FAILED, 'error' => 'The import could not be started.', 'finished_at' => Carbon::now(), 'psu_ip' => null, 'psu_user_agent' => null]);
         }
 
         return response()->json(['data' => $run->fresh()->present()], 202);

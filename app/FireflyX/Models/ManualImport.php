@@ -26,6 +26,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property null|string $error
  * @property null|array  $suggestions
  * @property null|string $suggest_error
+ * @property null|string $psu_ip          only while the run is going; never in present()
+ * @property null|string $psu_user_agent  likewise
  * @property null|Carbon $finished_at
  * @property Carbon      $created_at
  */

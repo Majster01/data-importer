@@ -118,15 +118,26 @@ abstract class Request
             }
             $filter = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
             if ($filter) {
-                Log::debug(sprintf('IP "%s" is valid.', $ip));
+                Log::debug('The PSU IP is valid.'); // FireflyX: not the address itself
                 $headers['PSU-IP-Address'] = $ip;
             }
             if (false === $filter) {
-                Log::warning(sprintf('IP "%s" NOT is valid.', $ip));
+                Log::warning('The PSU IP is NOT valid.'); // FireflyX: not the address itself
             }
+        }
+        // FireflyX: a manual import is user-initiated, which the bank wants to hear as PSU-User-Agent.
+        $psuUserAgent    = config('eb.psu_user_agent');
+        if (is_string($psuUserAgent) && '' !== $psuUserAgent) {
+            $headers['PSU-User-Agent'] = $psuUserAgent;
         }
         $filteredHeaders = $headers;
         unset($filteredHeaders['Authorization']);
+        // FireflyX: the user's address and User-Agent are not for the log.
+        foreach (['PSU-IP-Address', 'PSU-User-Agent'] as $psuHeader) {
+            if (array_key_exists($psuHeader, $filteredHeaders)) {
+                $filteredHeaders[$psuHeader] = 'REDACTED';
+            }
+        }
         Log::debug('Call to getHeaders() with final headers (Authorization is removed): ', $filteredHeaders);
 
         return $headers;

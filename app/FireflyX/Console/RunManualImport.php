@@ -18,6 +18,7 @@ use App\FireflyX\Models\ManualImport;
 use App\FireflyX\Suggester\SuggesterClient;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -42,6 +43,43 @@ final class RunManualImport extends Command
         }
         $run->refresh();
 
+        $previous = $this->tagWithPsu($run);
+        try {
+            return $this->importAndSuggest($run, $importer, $suggester);
+        } finally {
+            // The user's address is only for this run.
+            config($previous);
+            $run->update(['psu_ip' => null, 'psu_user_agent' => null]);
+        }
+    }
+
+    /**
+     * The bank counts a request with PSU headers as user-initiated. The importer
+     * reads them from config, and this process is the manual run's alone (the
+     * nightly import is another process), so setting them here tags this run only.
+     *
+     * @return array<string, mixed> the config to put back afterwards
+     */
+    private function tagWithPsu(ManualImport $run): array
+    {
+        $previous = [];
+        foreach (['eb.add_import_ip_header', 'eb.import_ip', 'eb.psu_user_agent'] as $key) {
+            $previous[$key] = config($key);
+        }
+        if (null !== $run->psu_ip) {
+            config(['eb.add_import_ip_header' => true, 'eb.import_ip' => $run->psu_ip]);
+        }
+        if (null !== $run->psu_user_agent) {
+            config(['eb.psu_user_agent' => $run->psu_user_agent]);
+        }
+        // Never the address itself; which part is missing says why a run was not fully tagged.
+        Log::info(sprintf('FireflyX: manual import %d psu_tagged: ip %s, user agent %s.', $run->id, null === $run->psu_ip ? 'missing' : 'sent', null === $run->psu_user_agent ? 'missing' : 'sent'));
+
+        return $previous;
+    }
+
+    private function importAndSuggest(ManualImport $run, ConfigImporter $importer, SuggesterClient $suggester): int
+    {
         $file = $this->writeConfig($run);
         if (null === $file) {
             return self::FAILURE;

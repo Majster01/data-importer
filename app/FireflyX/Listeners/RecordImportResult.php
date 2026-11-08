@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\FireflyX\Listeners;
 
 use App\Events\ImportedTransactions;
+use App\FireflyX\Import\BankSideFailure;
 use App\FireflyX\Models\Connection;
 use App\FireflyX\Models\ImportRun;
 use Carbon\Carbon;
@@ -63,11 +64,17 @@ final class RecordImportResult
             static fn ($error): bool => !is_string($error) || (false === stripos($error, '[eb003]') && false === stripos($error, 'No transactions were downloaded from Enable Banking'))
         ));
 
+        $first  = $errors[0] ?? null;
+        // A failure on the bank's side reads as one, not as a raw HTTP error.
+        if (is_string($first) && BankSideFailure::matches($first)) {
+            $first = BankSideFailure::SUMMARY;
+        }
+
         return [
             'messages'    => count(self::flatten($event->messages)),
             'warnings'    => count(self::flatten($event->warnings)),
             'errors'      => count($errors),
-            'first_error' => $errors[0] ?? null,
+            'first_error' => $first,
         ];
     }
 

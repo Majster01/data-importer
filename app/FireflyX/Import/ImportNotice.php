@@ -84,6 +84,8 @@ final class ImportNotice
         $error = strtolower($firstError);
 
         return match (true) {
+            BankSideFailure::matches($error)
+                => sprintf('%s had a problem on its side, so nothing could be imported. Nothing is wrong with your connection; the next import tries again.', $bank),
             str_contains($error, 'a112'), str_contains($error, 'a113'), str_contains($error, 'a114'), str_contains($error, 'eua') && str_contains($error, 'expired'), str_contains($error, 'session') && (str_contains($error, 'expired') || str_contains($error, 'closed'))
                 => sprintf('The consent for %s has ended, so nothing was imported. Re-authenticate it in Bank connections.', $bank),
             str_contains($error, '429'), str_contains($error, 'too many'), str_contains($error, 'rate limit')

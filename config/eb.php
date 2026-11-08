@@ -33,4 +33,6 @@ return [
     ],
     'add_import_ip_header'  => env('ENABLE_BANKING_IMPORT_IP_HEADER', false),
     'import_ip'             => env('ENABLE_BANKING_IMPORT_IP', '127.0.0.1'),
+    // FireflyX: set at runtime for a manual import (the tapping user's User-Agent), never from the environment.
+    'psu_user_agent'        => null,
 ];

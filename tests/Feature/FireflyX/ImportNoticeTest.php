@@ -59,6 +59,7 @@ final class ImportNoticeTest extends FireflyXTestCase
     {
         return [
             'consent ended'    => ['[a112]: the EUA has expired', 'The consent for NLB d.d. has ended'],
+            'bank side failure' => ['Enable Banking API error: Client error: `GET https://api.enablebanking.com/accounts/x/details` resulted in a `400 Bad Request` response: {"code":400,"message":"Error interacting with ASPSP","error":"ASPSP_ERROR"}', 'had a problem on its side'],
             'rate limited'     => ['The bank answered 429 Too Many Requests', 'limited how often'],
             'bank refused'     => ['Enable Banking API error: 401', 'Enable Banking refused the request'],
             'download failed'  => ['[eb001]: Could not download from Enable Banking: timeout', 'could not be downloaded'],
@@ -82,6 +83,18 @@ final class ImportNoticeTest extends FireflyXTestCase
         $this->assertLessThanOrEqual(300, mb_strlen($notice['body']));
         $this->assertSame('/bank-connections', $notice['path']);
         $this->assertNull($notice['count']);
+    }
+
+    public function testABankSideFailureIsTheLastErrorInPlainWords(): void
+    {
+        $raw = 'Enable Banking API error: Client error: 400 {&#34;message&#34;:&#34;Error interacting with ASPSP&#34;,&#34;detail&#34;:{&#34;message&#34;:&#34;Internal server error&#34;}}';
+
+        $summary = \App\FireflyX\Listeners\RecordImportResult::summarize(new ImportedTransactions('otp.json', [], [], [0 => [$raw]], []));
+
+        $this->assertSame(1, $summary['errors']);
+        $this->assertSame(\App\FireflyX\Import\BankSideFailure::SUMMARY, $summary['first_error']);
+        $connection = $this->connection('otp', ['bank_name' => 'OTP banka'], [['name' => 'OTP Main']]);
+        $this->assertStringContainsString('OTP banka had a problem on its side', ImportNotice::for($connection, $summary)['body']);
     }
 
     public function testAConnectionThatWasNotImportedIsAFailure(): void

@@ -9,7 +9,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\FireflyX;
 
+use App\Events\ImportedTransactions;
 use App\FireflyX\Http\ErrorDay;
+use App\FireflyX\Listeners\RecordImportResult;
 use App\FireflyX\Models\Connection;
 use App\FireflyX\Models\ImportRun;
 use App\FireflyX\Models\ManualImport;
@@ -116,6 +118,32 @@ final class ErrorDayTest extends FireflyXTestCase
         $day = ErrorDay::build(Carbon::parse('2026-10-29'), [], [$dead], self::BANKS);
 
         $this->assertSame([['message' => 'The import was interrupted.', 'count' => 1]], $day['items'][0]['messages']);
+        $this->assertSame(['manual', 1, 0], [$day['items'][0]['source'], $day['count'], $day['items'][0]['more']]);
+    }
+
+    public function testARunThatDiedAfterImportingCleanlyStillCountsAsOneError(): void
+    {
+        $dead = $this->manual(1, 'nlb', '2026-10-29 08:00:00', ManualImport::SUGGESTING, 0, null, null);
+        $dead->updated_at = Carbon::now()->subMinutes(ManualImport::STALE_AFTER_MINUTES + 1);
+
+        $day = ErrorDay::build(Carbon::parse('2026-10-29'), [], [$dead], self::BANKS);
+
+        $this->assertSame([1, 0], [$day['count'], $day['items'][0]['more']]);
+    }
+
+    public function testMoreCountsTheRepeatsOfKeptMessagesAndTheOnesCutOff(): void
+    {
+        $event  = new ImportedTransactions('nlb.json', [], [], [0 => [...array_fill(0, 5, 'a'), ...array_map(static fn (int $i): string => 'error '.$i, range(1, 55)), 'a']], []);
+        $kept   = RecordImportResult::errorMessages($event);
+        $errors = RecordImportResult::summarize($event)['errors'];
+
+        $day = ErrorDay::build(Carbon::parse('2026-10-29'), [$this->nightly(1, 'nlb', '2026-10-29 03:05:00', $errors, $kept)], [], self::BANKS);
+
+        $this->assertSame(61, $errors);
+        $this->assertCount(50, $kept);
+        $this->assertSame(['a', 6], [$kept[0]['message'], $kept[0]['count']]);
+        $this->assertSame('error 49', $kept[49]['message']);
+        $this->assertSame(6, $day['items'][0]['more'], '61 errors, 6 of a and 49 others shown');
     }
 
     public function testFiltersByConnectionButKeepsAllConnectionsForTheFilter(): void

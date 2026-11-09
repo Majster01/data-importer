@@ -42,8 +42,8 @@ final class ErrorDay
         foreach ($manuals as $manual) {
             $shown = $manual->present();
             if (ManualImport::FAILED === $shown['status']) {
-                // A run that failed before the import reported anything has no count: it is one error.
-                $entries[] = self::entry($manual->created_at, $manual->id, 'manual', $manual->connection?->name, $banks, $manual->summary['errors'] ?? 1, $manual->error_messages, $shown['error']);
+                // A failed run is at least one error: one that failed before the import reported anything, or died after it, has no count of its own.
+                $entries[] = self::entry($manual->created_at, $manual->id, 'manual', $manual->connection?->name, $banks, max(1, $manual->summary['errors'] ?? 0), $manual->error_messages, $shown['error']);
             }
         }
 

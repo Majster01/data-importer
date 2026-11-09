@@ -63,6 +63,7 @@ final class StatusTest extends FireflyXTestCase
         $this->assertSame(0, $run->created);
         $this->assertSame(0, $run->errors);
         $this->assertNull($run->first_error);
+        $this->assertNull($run->error_messages);
         $this->assertTrue(Connection::where('name', 'revolut')->first()->last_import_ok);
     }
 

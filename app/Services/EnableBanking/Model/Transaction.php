@@ -52,6 +52,8 @@ final class Transaction
     public string  $additionalInformation = '';
     public string  $status                = '';
     public array   $tags                  = [];
+    /** @var array<string, ?string> The dates exactly as the bank sent them, before any fallback. */
+    public array   $rawDates              = [];
 
     public static function fromArray(array $array): self
     {
@@ -77,6 +79,11 @@ final class Transaction
         $transaction->currencyCode          = $array['transaction_amount']['currency'] ?? '';
 
         // Handle dates
+        $transaction->rawDates              = [
+            'booking_date'     => self::rawDate($array['booking_date'] ?? null),
+            'value_date'       => self::rawDate($array['value_date'] ?? null),
+            'transaction_date' => self::rawDate($array['transaction_date'] ?? null),
+        ];
         if (array_key_exists('booking_date', $array) && null !== $array['booking_date']) {
             $transaction->bookingDate = Carbon::parse($array['booking_date']);
         }
@@ -189,18 +196,42 @@ final class Transaction
 
     public function getDate(): Carbon
     {
+        $source = $this->getDateSource();
+        if ('now' === $source) {
+            Log::warning('Transaction has no date, return NOW.');
+
+            return Carbon::now(config('app.timezone'));
+        }
+
+        return match ($source) {
+            'transaction_date' => $this->transactionDate,
+            'booking_date'     => $this->bookingDate,
+            'value_date'       => $this->valueDate,
+        };
+    }
+
+    /**
+     * Which of the bank's fields getDate() uses: transaction_date, booking_date, value_date,
+     * or "now" when the bank sent none (the date is then the day of the import).
+     */
+    public function getDateSource(): string
+    {
         if ($this->transactionDate instanceof Carbon) {
-            return $this->transactionDate;
+            return 'transaction_date';
         }
         if ($this->bookingDate instanceof Carbon) {
-            return $this->bookingDate;
+            return 'booking_date';
         }
         if ($this->valueDate instanceof Carbon) {
-            return $this->valueDate;
+            return 'value_date';
         }
-        Log::warning('Transaction has no date, return NOW.');
 
-        return Carbon::now(config('app.timezone'));
+        return 'now';
+    }
+
+    private static function rawDate(mixed $value): ?string
+    {
+        return is_scalar($value) ? (string) $value : null;
     }
 
     public function getValueDate(): ?Carbon

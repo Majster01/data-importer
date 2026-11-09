@@ -13,7 +13,9 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Debug trace of the consent flow, for working out why a bank returns what it
- * does. Off unless FIREFLYX_EB_TRACE=true.
+ * does. Off unless FIREFLYX_EB_TRACE=true. An import also writes one
+ * "transaction dates" line per transaction: the bank's booking, value and
+ * transaction dates as received, and which one became the Firefly III date.
  *
  * Every line starts with "FireflyX EB-TRACE <event>" so one grep finds the
  * whole flow:

@@ -24,6 +24,7 @@ declare(strict_types=1);
 
 namespace App\Services\EnableBanking\Conversion\Routine;
 
+use App\FireflyX\EnableBanking\FlowTrace;
 use App\Models\ImportJob;
 use App\Services\EnableBanking\Model\Transaction;
 use App\Services\Shared\Configuration\Configuration;
@@ -104,10 +105,18 @@ final class GenerateTransactions
         ];
 
         $valueDate                = $entry->getValueDate();
+        $date                     = $entry->getDate();
+        FlowTrace::event('transaction dates', [
+            'external_id'  => $entry->getTransactionId(),
+            'status'       => $entry->status,
+            'received'     => $entry->rawDates,
+            'used'         => $date->toW3cString(),
+            'used_from'    => $entry->getDateSource(),
+        ]);
         $transaction              = [
             'type'               => 'withdrawal',
-            'date'               => $entry->getDate()->toW3cString(),
-            'datetime'           => $entry->getDate()->toW3cString(),
+            'date'               => $date->toW3cString(),
+            'datetime'           => $date->toW3cString(),
             'amount'             => $entry->transactionAmount,
             'description'        => $entry->getCleanDescription(),
             'payment_date'       => $valueDate instanceof Carbon ? $valueDate->format('Y-m-d') : '',

@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string      $status
  * @property null|array  $summary
  * @property null|string $error
+ * @property null|array  $error_messages  list of {message, count}; not part of present()
  * @property null|array  $suggestions
  * @property null|string $suggest_error
  * @property null|string $psu_ip          only while the run is going; never in present()
@@ -50,11 +51,12 @@ final class ManualImport extends Model
     protected function casts(): array
     {
         return [
-            'date_from'   => 'date',
-            'date_to'     => 'date',
-            'summary'     => 'array',
-            'suggestions' => 'array',
-            'finished_at' => 'datetime',
+            'date_from'      => 'date',
+            'date_to'        => 'date',
+            'summary'        => 'array',
+            'error_messages' => 'array',
+            'suggestions'    => 'array',
+            'finished_at'    => 'datetime',
         ];
     }
 

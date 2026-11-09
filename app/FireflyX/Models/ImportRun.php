@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int         $warnings
  * @property int         $errors
  * @property null|string $first_error
+ * @property null|array  $error_messages  list of {message, count}
  * @property Carbon      $created_at
  */
 final class ImportRun extends Model
@@ -36,7 +37,7 @@ final class ImportRun extends Model
 
     protected function casts(): array
     {
-        return ['ok' => 'boolean'];
+        return ['ok' => 'boolean', 'error_messages' => 'array'];
     }
 
     public function connection(): BelongsTo

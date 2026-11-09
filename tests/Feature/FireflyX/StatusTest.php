@@ -48,6 +48,7 @@ final class StatusTest extends FireflyXTestCase
         $this->assertSame([2, 0], $runs->pluck('created')->all());
         $this->assertSame([1, 0], $runs->pluck('warnings')->all());
         $this->assertSame('Enable Banking API error: 401', $runs[1]->first_error);
+        $this->assertSame([null, [['message' => 'Enable Banking API error: 401', 'count' => 1]]], $runs->pluck('error_messages')->all());
         $this->assertSame('2026-10-29 12:00:00', $runs[0]->created_at->format('Y-m-d H:i:s'));
     }
 

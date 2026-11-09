@@ -46,6 +46,14 @@ final class ErrorsTest extends FireflyXTestCase
         }
     }
 
+    public function testARangeOfAYearIsTheMostItTakes(): void
+    {
+        $this->getJson('/api/fireflyx/v1/errors?from=2025-10-29&to=2026-10-29', $this->auth())->assertOk();
+        $this->getJson('/api/fireflyx/v1/errors?from=2025-10-28&to=2026-10-29', $this->auth())->assertStatus(422);
+        $this->getJson('/api/fireflyx/v1/errors?from=2025-03-30&to=2026-03-29', $this->auth())->assertOk();
+        $this->getJson('/api/fireflyx/v1/errors?from=2025-03-28&to=2026-03-29', $this->auth())->assertStatus(422);
+    }
+
     public function testTheLastThirtyDaysUnlessAskedOtherwise(): void
     {
         $data = $this->getJson('/api/fireflyx/v1/errors', $this->auth())->assertOk()->json('data');

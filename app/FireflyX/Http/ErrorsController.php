@@ -37,7 +37,8 @@ final class ErrorsController extends Controller
         if (false === $to || false === $from) {
             return response()->json(['error' => 'from and to must be days, as 2026-11-09'], 422);
         }
-        if ($from->greaterThan($to) || $from->diffInDays($to) >= self::MAX_DAYS) {
+        // By calendar day: a difference in hours is off by one across a change of daylight saving time
+        if ($from->greaterThan($to) || $to->greaterThan($from->copy()->addDays(self::MAX_DAYS - 1))) {
             return response()->json(['error' => sprintf('from must not be after to, and at most %d days before it', self::MAX_DAYS - 1)], 422);
         }
         $connection = $request->query('connection');

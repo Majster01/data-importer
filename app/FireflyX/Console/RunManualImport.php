@@ -23,7 +23,9 @@ use Throwable;
 
 /**
  * One manual import: the saved connection's config over the chosen time frame,
- * then the category suggester over the same time frame. Started detached by
+ * then the category suggester over the same time frame, whatever the import
+ * reported. An import that failed still ends failed, and keeps the suggestions.
+ * Started detached by
  * ManualImportLauncher; Pico reads the progress from the manual_imports row.
  */
 final class RunManualImport extends Command
@@ -85,38 +87,56 @@ final class RunManualImport extends Command
             return self::FAILURE;
         }
 
-        try {
-            $outcome = $importer->import($file);
-        } catch (Throwable $e) {
-            $this->failRun($run, $e->getMessage());
+        $failure = null;
 
-            return self::FAILURE;
+        try {
+            $failure = $this->recordOutcome($run, $importer->import($file));
+        } catch (Throwable $e) {
+            $failure = $e->getMessage();
         } finally {
             if (is_file($file)) {
                 unlink($file);
             }
         }
 
-        $event = $outcome['result'];
-        if (null === $event) {
-            $this->failRun($run, sprintf('The importer could not run (exit code %d).', $outcome['exit_code']));
+        // Whatever the import did, the time frame may hold uncategorized
+        // transactions (from earlier imports, or the part that did come in), so
+        // the suggester always looks. Its result is kept on the run either way.
+        $this->suggest($run, $suggester);
+        if (null !== $failure) {
+            $this->failRun($run, $failure);
 
             return self::FAILURE;
+        }
+        $this->finish($run);
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Keeps what the import reported on the run.
+     *
+     * @param array{exit_code: int, result: null|\App\Events\ImportedTransactions} $outcome
+     *
+     * @return null|string why the import failed, or null when it finished cleanly
+     */
+    private function recordOutcome(ManualImport $run, array $outcome): ?string
+    {
+        $event = $outcome['result'];
+        if (null === $event) {
+            return sprintf('The importer could not run (exit code %d).', $outcome['exit_code']);
         }
         $summary = RecordImportResult::summarize($event);
         if ($summary['errors'] > 0) {
             $messages = RecordImportResult::errorMessages($event);
             $run->update(['summary' => $summary, 'error_messages' => $messages]);
             Log::info(sprintf('FireflyX: manual import %d kept %d distinct error message(s) of %d.', $run->id, count($messages), $summary['errors']));
-            $this->failRun($run, (string) $summary['first_error']);
 
-            return self::FAILURE;
+            return (string) $summary['first_error'];
         }
         $run->update(['summary' => $summary]);
 
-        $this->suggest($run, $suggester);
-
-        return self::SUCCESS;
+        return null;
     }
 
     /**
@@ -159,10 +179,15 @@ final class RunManualImport extends Command
                 $error = $e->getMessage();
             }
         }
-        // The transactions are in either way, so this is done, not failed.
+        // Trouble here never decides the run's status.
         $run->suggest_error = $error;
-        $run->status        = ManualImport::DONE;
-        $run->finished_at   = Carbon::now();
+        $run->save();
+    }
+
+    private function finish(ManualImport $run): void
+    {
+        $run->status      = ManualImport::DONE;
+        $run->finished_at = Carbon::now();
         $run->save();
     }
 

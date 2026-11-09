@@ -271,10 +271,10 @@ final class ManualImportTest extends FireflyXTestCase
         $this->assertSame([false, null], [$this->importer->psu[0], $this->importer->psu[2]]);
     }
 
-    public function testImportErrorsFailTheRunWithoutSuggesting(): void
+    public function testImportErrorsFailTheRunButStillSuggest(): void
     {
         $this->connection('nlb');
-        Http::fake();
+        Http::fake(['suggester.test/*' => Http::response(['written' => 2])]);
         $run = $this->queued('nlb', '2026-09-01', '2026-09-30', ['psu_ip' => '8.8.8.8', 'psu_user_agent' => 'Pico/1.0']);
         $this->importer->result = new ImportedTransactions('nlb.manual-1.json', [], [], [3 => ['Enable Banking API error: 401']], []);
 
@@ -284,25 +284,83 @@ final class ManualImportTest extends FireflyXTestCase
 
         $run->refresh();
         $this->assertSame([ManualImport::FAILED, 'Enable Banking API error: 401'], [$run->status, $run->error]);
+        $this->assertNotNull($run->finished_at);
         $this->assertSame(1, $run->summary['errors']);
         $this->assertSame([['message' => 'Enable Banking API error: 401', 'count' => 1]], $run->error_messages);
         $this->assertSame(['messages', 'warnings', 'errors', 'first_error'], array_keys($run->summary), 'the list is not part of the summary');
         $this->assertArrayNotHasKey('error_messages', $run->present());
-        Http::assertNothingSent();
+        $this->assertSuggestedOverTheTimeFrame();
+        $this->assertSame([ManualImport::FAILED, ['written' => 2], null], [$run->present()['status'], $run->present()['suggestions'], $run->present()['suggest_error']]);
     }
 
-    public function testAnImporterThatNeverReportsFailsTheRun(): void
+    public function testSuggesterTroubleAfterImportErrorsKeepsBothSaid(): void
     {
         $this->connection('nlb');
+        Http::fake(['suggester.test/*' => Http::response(['error' => 'model API unreachable'], 502)]);
+        $run = $this->queued('nlb', '2026-09-01', '2026-09-30');
+        $this->importer->result = new ImportedTransactions('x.json', [], [], [3 => ['Enable Banking API error: 401']], []);
+
+        $this->artisan('fireflyx:manual-import', ['id' => $run->id])->assertFailed();
+
+        $run->refresh();
+        $this->assertSame([ManualImport::FAILED, 'Enable Banking API error: 401', 'model API unreachable', null], [$run->status, $run->error, $run->suggest_error, $run->suggestions]);
+    }
+
+    public function testAnImporterThatThrowsStillSuggests(): void
+    {
+        $this->connection('nlb');
+        Http::fake(['suggester.test/*' => Http::response(['written' => 1])]);
+        $run = $this->queued('nlb', '2026-09-01', '2026-09-30', ['psu_ip' => '8.8.8.8', 'psu_user_agent' => 'Pico/1.0']);
+        $this->importer->throw = new RuntimeException('consent expired');
+
+        $this->artisan('fireflyx:manual-import', ['id' => $run->id])->assertFailed();
+
+        $this->assertDetailsGone($run);
+        $run->refresh();
+        $this->assertSame([ManualImport::FAILED, 'consent expired', ['written' => 1], null], [$run->status, $run->error, $run->suggestions, $run->suggest_error]);
+        $this->assertNotNull($run->finished_at);
+        $this->assertSuggestedOverTheTimeFrame();
+        $this->assertSame([], glob($this->importDir.'/manual/*'));
+    }
+
+    public function testAnImporterThatNeverReportsFailsTheRunButStillSuggests(): void
+    {
+        $this->connection('nlb');
+        Http::fake(['suggester.test/*' => Http::response(['written' => 0])]);
         $run = $this->queued('nlb', '2026-09-01', '2026-09-30', ['psu_ip' => '8.8.8.8', 'psu_user_agent' => 'Pico/1.0']);
         $this->importer->exitCode = 5;
 
         $this->artisan('fireflyx:manual-import', ['id' => $run->id])->assertFailed();
 
         $this->assertDetailsGone($run);
-        $this->assertSame('The importer could not run (exit code 5).', $run->refresh()->error);
+        $run->refresh();
+        $this->assertSame([ManualImport::FAILED, 'The importer could not run (exit code 5).', ['written' => 0], null], [$run->status, $run->error, $run->suggestions, $run->suggest_error]);
         $this->assertNull($run->error_messages, 'a failure with no import result is read from error');
+        $this->assertSuggestedOverTheTimeFrame();
         $this->assertSame([], glob($this->importDir.'/manual/*'));
+    }
+
+    public function testNothingIsSuggestedWhenNoImportWasAttempted(): void
+    {
+        $this->connection('nlb');
+        Http::fake();
+        config(['fireflyx.base_config' => $this->importDir.'/missing.json']);
+        $run = $this->queued('nlb', '2026-09-01', '2026-09-30');
+
+        $this->artisan('fireflyx:manual-import', ['id' => $run->id])->assertFailed();
+
+        $this->assertSame(0, $this->importer->calls);
+        Http::assertNothingSent();
+        $run->refresh();
+        $this->assertSame(ManualImport::FAILED, $run->status);
+        $this->assertNotNull($run->error);
+        $this->assertNull($run->suggestions);
+    }
+
+    private function assertSuggestedOverTheTimeFrame(): void
+    {
+        Http::assertSent(static fn ($request): bool => 'http://suggester.test/suggest' === $request->url()
+            && ['since' => '2026-09-01', 'until' => '2026-09-30'] === $request->data());
     }
 
     public function testSuggesterTroubleKeepsTheImportDone(): void
@@ -401,6 +459,7 @@ final class FakeImporter implements ConfigImporter
     public ?ImportedTransactions $result = null;
     public int $exitCode                 = 0;
     public int $calls                    = 0;
+    public ?\Throwable $throw           = null;
     public array $config                 = [];
     /** @var array{0: mixed, 1: mixed, 2: mixed} eb.* config as the import saw it */
     public array $psu                    = [];
@@ -408,6 +467,9 @@ final class FakeImporter implements ConfigImporter
     public function import(string $configFile): array
     {
         ++$this->calls;
+        if (null !== $this->throw) {
+            throw $this->throw;
+        }
         $this->psu    = [config('eb.add_import_ip_header'), config('eb.import_ip'), config('eb.psu_user_agent')];
         $this->config = json_decode((string) file_get_contents($configFile), true, 512, JSON_THROW_ON_ERROR);
         if (!str_contains($configFile, '/manual/') || !str_ends_with($configFile, '.json')) {

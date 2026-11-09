@@ -24,7 +24,8 @@ use Throwable;
 /**
  * One manual import: the saved connection's config over the chosen time frame,
  * then the category suggester over the same time frame, whatever the import
- * reported: an import that failed still ends failed, with the suggestions. Started detached by
+ * reported. An import that failed still ends failed, and keeps the suggestions.
+ * Started detached by
  * ManualImportLauncher; Pico reads the progress from the manual_imports row.
  */
 final class RunManualImport extends Command
@@ -86,20 +87,16 @@ final class RunManualImport extends Command
             return self::FAILURE;
         }
 
-        $outcome = null;
         $failure = null;
 
         try {
-            $outcome = $importer->import($file);
+            $failure = $this->recordOutcome($run, $importer->import($file));
         } catch (Throwable $e) {
             $failure = $e->getMessage();
         } finally {
             if (is_file($file)) {
                 unlink($file);
             }
-        }
-        if (null === $failure) {
-            $failure = $this->recordOutcome($run, $outcome);
         }
 
         // Whatever the import did, the time frame may hold uncategorized
@@ -182,7 +179,7 @@ final class RunManualImport extends Command
                 $error = $e->getMessage();
             }
         }
-        // The transactions are in either way, so trouble here does not fail the run.
+        // Trouble here never decides the run's status.
         $run->suggest_error = $error;
         $run->save();
     }

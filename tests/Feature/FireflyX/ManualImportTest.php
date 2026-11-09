@@ -317,7 +317,7 @@ final class ManualImportTest extends FireflyXTestCase
 
         $this->assertDetailsGone($run);
         $run->refresh();
-        $this->assertSame([ManualImport::FAILED, 'consent expired', ['written' => 1]], [$run->status, $run->error, $run->suggestions]);
+        $this->assertSame([ManualImport::FAILED, 'consent expired', ['written' => 1], null], [$run->status, $run->error, $run->suggestions, $run->suggest_error]);
         $this->assertNotNull($run->finished_at);
         $this->assertSuggestedOverTheTimeFrame();
         $this->assertSame([], glob($this->importDir.'/manual/*'));
@@ -334,7 +334,7 @@ final class ManualImportTest extends FireflyXTestCase
 
         $this->assertDetailsGone($run);
         $run->refresh();
-        $this->assertSame([ManualImport::FAILED, 'The importer could not run (exit code 5).', ['written' => 0]], [$run->status, $run->error, $run->suggestions]);
+        $this->assertSame([ManualImport::FAILED, 'The importer could not run (exit code 5).', ['written' => 0], null], [$run->status, $run->error, $run->suggestions, $run->suggest_error]);
         $this->assertNull($run->error_messages, 'a failure with no import result is read from error');
         $this->assertSuggestedOverTheTimeFrame();
         $this->assertSame([], glob($this->importDir.'/manual/*'));

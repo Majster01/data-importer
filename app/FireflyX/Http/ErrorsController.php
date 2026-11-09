@@ -18,29 +18,61 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 /**
- * GET /api/fireflyx/v1/errors?date=2026-11-09&connection=nlb: the errors of
- * the nightly and manual imports that started on one day, for Pico's errors
- * page. The day is the app's own, as in the status timeline.
+ * GET /api/fireflyx/v1/errors?from=2026-10-10&to=2026-11-09&connection=nlb&source=nightly&q=iban&page=1&limit=50
+ *
+ * The errors of the nightly and manual imports that started in the days from
+ * from..to (the app's own days, as in the status timeline), one entry per error
+ * message, for Pico's errors page. The last 30 days unless asked otherwise.
  */
 final class ErrorsController extends Controller
 {
+    private const int DEFAULT_DAYS = 30;
+    private const int MAX_DAYS     = 366;
+    private const int MAX_LIMIT    = 100;
+
     public function show(Request $request): JsonResponse
     {
-        $date = $request->query('date', Carbon::today()->format('Y-m-d'));
-        $day  = is_string($date) && 1 === preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? Carbon::createFromFormat('!Y-m-d', $date) : false;
-        if (false === $day || $day->format('Y-m-d') !== $date) {
-            return response()->json(['error' => 'date must be a day, as 2026-11-09'], 422);
+        $to   = self::day($request->query('to', Carbon::today()->format('Y-m-d')));
+        $from = self::day($request->query('from', false === $to ? '' : $to->copy()->subDays(self::DEFAULT_DAYS - 1)->format('Y-m-d')));
+        if (false === $to || false === $from) {
+            return response()->json(['error' => 'from and to must be days, as 2026-11-09'], 422);
         }
-        $only = $request->query('connection');
-        if (null !== $only && (!is_string($only) || 1 !== preg_match('/^[a-z0-9-]+$/', $only))) {
-            return response()->json(['error' => 'connection must be a connection name'], 422);
+        if ($from->greaterThan($to) || $from->diffInDays($to) >= self::MAX_DAYS) {
+            return response()->json(['error' => sprintf('from must not be after to, and at most %d days before it', self::MAX_DAYS - 1)], 422);
+        }
+        $connection = $request->query('connection');
+        $source     = $request->query('source');
+        $search     = $request->query('q');
+        if ((null !== $connection && (!is_string($connection) || 1 !== preg_match('/^[a-z0-9-]+$/', $connection)))
+            || (null !== $source && !in_array($source, ErrorFeed::SOURCES, true))
+            || (null !== $search && (!is_string($search) || mb_strlen($search) > 100))) {
+            return response()->json(['error' => 'connection must be a connection name, source nightly or manual, q at most 100 characters'], 422);
+        }
+        $page  = filter_var($request->query('page', 1), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $limit = filter_var($request->query('limit', 50), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => self::MAX_LIMIT]]);
+        if (false === $page || false === $limit) {
+            return response()->json(['error' => sprintf('page must be a number from 1, limit from 1 to %d', self::MAX_LIMIT)], 422);
         }
 
-        $window  = [$day, $day->copy()->endOfDay()];
+        $window  = [$from, $to->copy()->endOfDay()];
         $runs    = ImportRun::whereBetween('created_at', $window)->get();
         $manuals = ManualImport::with(['connection' => static fn ($query) => $query->withTrashed()])->whereBetween('created_at', $window)->get();
         $banks   = Connection::withTrashed()->pluck('bank_name', 'name')->all();
 
-        return response()->json(['data' => ErrorDay::build($day, $runs, $manuals, $banks, $only)]);
+        return response()->json(['data' => [
+            'from' => $from->format('Y-m-d'),
+            'to'   => $to->format('Y-m-d'),
+            ...ErrorFeed::build($runs, $manuals, $banks, ['connection' => $connection, 'source' => $source, 'q' => $search], $page, $limit),
+        ]]);
+    }
+
+    private static function day(mixed $value): Carbon|false
+    {
+        if (!is_string($value) || 1 !== preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return false;
+        }
+        $day = Carbon::createFromFormat('!Y-m-d', $value);
+
+        return false !== $day && $day->format('Y-m-d') === $value ? $day : false;
     }
 }

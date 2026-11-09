@@ -96,11 +96,10 @@ final class RecordImportResult
         $counts = [];
         foreach (self::errors($event) as $error) {
             $text = mb_substr(mb_scrub((string) $error), 0, self::MAX_MESSAGE_LENGTH);
-            $key  = 'm'.$text;
-            if (!isset($counts[$key])) {
-                $counts[$key] = ['message' => $text, 'count' => 0];
+            if (!isset($counts[$text])) {
+                $counts[$text] = ['message' => $text, 'count' => 0];
             }
-            ++$counts[$key]['count'];
+            ++$counts[$text]['count'];
         }
 
         return array_slice(array_values($counts), 0, self::MAX_MESSAGES);

@@ -36,7 +36,7 @@ final class ErrorsController extends Controller
             return response()->json(['error' => 'connection must be a connection name'], 422);
         }
 
-        $window  = [$day->copy()->startOfDay(), $day->copy()->endOfDay()];
+        $window  = [$day, $day->copy()->endOfDay()];
         $runs    = ImportRun::whereBetween('created_at', $window)->get();
         $manuals = ManualImport::with(['connection' => static fn ($query) => $query->withTrashed()])->whereBetween('created_at', $window)->get();
         $banks   = Connection::withTrashed()->pluck('bank_name', 'name')->all();

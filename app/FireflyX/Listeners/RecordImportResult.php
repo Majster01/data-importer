@@ -14,6 +14,7 @@ use App\FireflyX\Import\BankSideFailure;
 use App\FireflyX\Models\Connection;
 use App\FireflyX\Models\ImportRun;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Upstream's autoimport fires ImportedTransactions once per config file, on
@@ -23,6 +24,9 @@ use Carbon\Carbon;
  */
 final class RecordImportResult
 {
+    public const int MAX_MESSAGES       = 50;
+    public const int MAX_MESSAGE_LENGTH = 1000;
+
     public function handle(ImportedTransactions $event): void
     {
         $name       = basename($event->configurationFile, '.json');
@@ -40,6 +44,7 @@ final class RecordImportResult
         }
         $connection->save();
 
+        $messages = $summary['errors'] > 0 ? self::errorMessages($event) : null;
         ImportRun::create([
             'connection_id'   => $connection->id,
             'connection_name' => $connection->name,
@@ -48,8 +53,12 @@ final class RecordImportResult
             'warnings'        => $summary['warnings'],
             'errors'          => $summary['errors'],
             'first_error'     => $summary['first_error'],
+            'error_messages'  => $messages,
             'created_at'      => $connection->last_import_at,
         ]);
+        if (null !== $messages) {
+            Log::info(sprintf('FireflyX: import of %s kept %d distinct error message(s) of %d.', $connection->name, count($messages), $summary['errors']));
+        }
         ImportRun::where('created_at', '<', Carbon::now()->subDays((int) config('fireflyx.history_days')))->delete();
     }
 
@@ -58,12 +67,7 @@ final class RecordImportResult
      */
     public static function summarize(ImportedTransactions $event): array
     {
-        // eb003: the bank had nothing new to download. That is a successful import of 0 new, not an error.
-        $errors = array_values(array_filter(
-            self::flatten($event->errors),
-            static fn ($error): bool => !is_string($error) || (false === stripos($error, '[eb003]') && false === stripos($error, 'No transactions were downloaded from Enable Banking'))
-        ));
-
+        $errors = self::errors($event);
         $first  = $errors[0] ?? null;
         // A failure on the bank's side reads as one, not as a raw HTTP error.
         if (is_string($first) && BankSideFailure::matches($first)) {
@@ -76,6 +80,40 @@ final class RecordImportResult
             'errors'      => count($errors),
             'first_error' => $first,
         ];
+    }
+
+    /**
+     * Every error of the import as the bank and the importer worded it: the
+     * list is for finding out what went wrong, so no friendlier text here.
+     * Identical messages are counted once, cut by characters (not bytes) so
+     * the JSON stays valid, and only the first MAX_MESSAGES distinct ones are
+     * kept; the true number of errors stays in summarize().
+     *
+     * @return list<array{message: string, count: int}>
+     */
+    public static function errorMessages(ImportedTransactions $event): array
+    {
+        $counts = [];
+        foreach (self::errors($event) as $error) {
+            $text = mb_substr(mb_scrub((string) $error), 0, self::MAX_MESSAGE_LENGTH);
+            if (!isset($counts[$text])) {
+                $counts[$text] = ['message' => $text, 'count' => 0];
+            }
+            ++$counts[$text]['count'];
+        }
+
+        return array_slice(array_values($counts), 0, self::MAX_MESSAGES);
+    }
+
+    /**
+     * eb003: the bank had nothing new to download. That is a successful import of 0 new, not an error.
+     */
+    private static function errors(ImportedTransactions $event): array
+    {
+        return array_values(array_filter(
+            self::flatten($event->errors),
+            static fn ($error): bool => !is_string($error) || (false === stripos($error, '[eb003]') && false === stripos($error, 'No transactions were downloaded from Enable Banking'))
+        ));
     }
 
     private static function flatten(array $grouped): array

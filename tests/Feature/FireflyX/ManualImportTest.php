@@ -285,6 +285,9 @@ final class ManualImportTest extends FireflyXTestCase
         $run->refresh();
         $this->assertSame([ManualImport::FAILED, 'Enable Banking API error: 401'], [$run->status, $run->error]);
         $this->assertSame(1, $run->summary['errors']);
+        $this->assertSame([['message' => 'Enable Banking API error: 401', 'count' => 1]], $run->error_messages);
+        $this->assertSame(['messages', 'warnings', 'errors', 'first_error'], array_keys($run->summary), 'the list is not part of the summary');
+        $this->assertArrayNotHasKey('error_messages', $run->present());
         Http::assertNothingSent();
     }
 
@@ -298,6 +301,7 @@ final class ManualImportTest extends FireflyXTestCase
 
         $this->assertDetailsGone($run);
         $this->assertSame('The importer could not run (exit code 5).', $run->refresh()->error);
+        $this->assertNull($run->error_messages, 'a failure with no import result is read from error');
         $this->assertSame([], glob($this->importDir.'/manual/*'));
     }
 

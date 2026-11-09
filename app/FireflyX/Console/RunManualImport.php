@@ -104,12 +104,15 @@ final class RunManualImport extends Command
             return self::FAILURE;
         }
         $summary = RecordImportResult::summarize($event);
-        $run->update(['summary' => $summary]);
         if ($summary['errors'] > 0) {
+            $messages = RecordImportResult::errorMessages($event);
+            $run->update(['summary' => $summary, 'error_messages' => $messages]);
+            Log::info(sprintf('FireflyX: manual import %d kept %d distinct error message(s) of %d.', $run->id, count($messages), $summary['errors']));
             $this->failRun($run, (string) $summary['first_error']);
 
             return self::FAILURE;
         }
+        $run->update(['summary' => $summary]);
 
         $this->suggest($run, $suggester);
 

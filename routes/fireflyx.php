@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 use App\FireflyX\Http\BankController;
 use App\FireflyX\Http\ConnectionController;
+use App\FireflyX\Http\ErrorsController;
 use App\FireflyX\Http\LinkController;
 use App\FireflyX\Http\ManualImportController;
 use App\FireflyX\Http\RequireToken;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(RequireToken::class)->group(static function (): void {
     Route::get('banks', [BankController::class, 'index']);
     Route::get('status', [StatusController::class, 'show']);
+    Route::get('errors', [ErrorsController::class, 'show']);
     Route::get('connections', [ConnectionController::class, 'index']);
     Route::post('connections', [LinkController::class, 'create']);
     Route::get('connections/{name}', [ConnectionController::class, 'show'])->where('name', '[a-z0-9-]+');
